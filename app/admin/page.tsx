@@ -31,6 +31,20 @@ function shuffleArray(array: any[], seedString: string) {
 }
 
 export default function AdminDashboard() {
+  // ==========================================
+  // FITUR BARU: SECURITY LOGIN STATE
+  // ==========================================
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [loginError, setLoginError] = useState(false)
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
+
+  // 🔑 UBAH PIN RAHASIA ADMIN DI SINI
+  const SECRET_PIN = 'GARUDA2026'
+
+  // ==========================================
+  // STATE DASHBOARD ADMIN
+  // ==========================================
   const [tokens, setTokens] = useState<any[]>([])
   const [sessions, setSessions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -43,30 +57,57 @@ export default function AdminDashboard() {
   const [resAnswerMap, setResAnswerMap] = useState<Record<number, string>>({})
   
   const [resPrintStats, setResPrintStats] = useState({
-    aircraftWrong: 0,
-    regWrong: 0,
-    totalWrong: 0,
-    score: 0,
-    isPass: false
+    aircraftWrong: 0, regWrong: 0, totalWrong: 0, score: 0, isPass: false
   })
 
-  // ==========================================
-  // FITUR BARU: STATE TANDA TANGAN ADMIN
-  // ==========================================
+  // STATE TANDA TANGAN ADMIN
   const [showSignPanel, setShowSignPanel] = useState(false)
   const [adminSignData, setAdminSignData] = useState({
-    assessorName: '',
-    assessorSign: '',
-    inspectorName: '',
-    inspectorSign: '',
-    examiner1Sign: '',
-    examiner2Sign: ''
+    assessorName: '', assessorSign: '', inspectorName: '', inspectorSign: '', examiner1Sign: '', examiner2Sign: ''
   })
+
+  // Cek apakah Admin sudah login sebelumnya
+  useEffect(() => {
+    const authStatus = sessionStorage.getItem('admin_auth')
+    if (authStatus === 'verified') {
+      setIsAuthenticated(true)
+    }
+    setIsCheckingAuth(false)
+  }, [])
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (pinInput === SECRET_PIN) {
+      setIsAuthenticated(true)
+      setLoginError(false)
+      sessionStorage.setItem('admin_auth', 'verified') 
+    } else {
+      setLoginError(true)
+      setPinInput('')
+    }
+  }
+
+  const handleLogout = () => {
+    setIsAuthenticated(false)
+    sessionStorage.removeItem('admin_auth')
+    setPinInput('')
+  }
 
   const fetchData = async () => {
     setLoading(true)
-    const { data: tokenData } = await supabase.from('exam_tokens').select('*')
-    if (tokenData) setTokens(tokenData)
+    
+    // PERBAIKAN: Menghapus .order('created_at') agar tidak error jika kolom tidak ada
+    const { data: tokenData, error: tokenError } = await supabase
+      .from('exam_tokens')
+      .select('*')
+      
+    if (tokenData) {
+      // Urutkan manual di aplikasi (berdasarkan ID terbesar/terbaru)
+      const sortedTokens = tokenData.sort((a, b) => b.id - a.id)
+      setTokens(sortedTokens)
+    } else if (tokenError) {
+      console.error("Gagal menarik data token:", tokenError)
+    }
 
     const { data: sessionData } = await supabase
       .from('exam_results')
@@ -77,11 +118,13 @@ export default function AdminDashboard() {
     setLoading(false)
   }
 
+  // Tarik data HANYA JIKA admin sudah terautentikasi
   useEffect(() => {
+    if (!isAuthenticated) return;
     fetchData()
     const interval = setInterval(() => fetchData(), 10000)
     return () => clearInterval(interval)
-  }, [])
+  }, [isAuthenticated])
 
   const toggleTokenActive = async (tokenId: string, currentStatus: boolean) => {
     await supabase.from('exam_tokens').update({ is_active: !currentStatus }).eq('id', tokenId)
@@ -102,7 +145,7 @@ export default function AdminDashboard() {
   }
 
   const handleAdjustResult = async (resultId: string, isPassed: boolean) => {
-    if (!window.confirm(`Yakin ingin mengubah status menjadi ${isPassed ? 'LULUS' : 'GAGAL'}?`)) return
+    if (!window.confirm(`Yakin ingin mengubah status menjadi ${isPassed ? 'PASSED' : 'FAILED'}?`)) return
     await supabase.from('exam_results').update({ final_passed: isPassed }).eq('id', resultId)
     fetchData()
   }
@@ -163,8 +206,21 @@ Garuda Indonesia / GMF AeroAsia`)
     let newCode = ''
     for (let i = 0; i < 6; i++) newCode += chars.charAt(Math.floor(Math.random() * chars.length))
 
-    await supabase.from('exam_tokens').insert([{ type_of_ac: tokenTypeOfAC, kategori: tokenKategori, subject: tokenSubject, exam_no: parseInt(tokenExamNo), access_code: newCode, is_used: false, is_active: true, duration_minutes: 120 }])
-    fetchData()
+    const { error } = await supabase.from('exam_tokens').insert([{ 
+      type_of_ac: tokenTypeOfAC, 
+      kategori: tokenKategori, 
+      subject: tokenSubject, 
+      exam_no: parseInt(tokenExamNo), 
+      access_code: newCode, 
+      is_active: true
+    }])
+
+    if (error) {
+      alert('❌ GAGAL MEMBUAT KODE!\n\nAlasan: ' + error.message)
+    } else {
+      alert(`✅ BERHASIL!\nKode Akses Baru: ${newCode}`)
+      fetchData()
+    }
   }
 
   const handleViewResult = async (resultId: string) => {
@@ -204,7 +260,6 @@ Garuda Indonesia / GMF AeroAsia`)
         let isAnswerCorrect = false;
 
         if (userAns) {
-          // 🔥 AUTO-FIREWALL REKONSTRUKSI: Harus sama persis dengan yang di exam page
           let safeOptions = q.options;
           if (safeOptions.length > 4) {
               const correctOpt = safeOptions.find((o:any) => o.is_correct);
@@ -217,7 +272,6 @@ Garuda Indonesia / GMF AeroAsia`)
           const char = ['A', 'B', 'C', 'D'][optIndex] || ''
           if (char) mapping[index + 1] = char 
 
-          // Cek apakah jawabannya benar menggunakan safeOptions
           const selectedOpt = safeOptions.find((o:any) => o.id === userAns.selected_option_id);
           if (selectedOpt && selectedOpt.is_correct) {
              isAnswerCorrect = true;
@@ -261,11 +315,58 @@ Garuda Indonesia / GMF AeroAsia`)
     setResLoading(false)
   }
 
+
   // ==========================================
-  // RENDER TAMPILAN CETAK / PREVIEW DOKUMEN
+  // RENDER 1: HALAMAN LOGIN SECURITY
+  // ==========================================
+  if (isCheckingAuth) return null 
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#00102a] flex items-center justify-center p-4 font-sans relative overflow-hidden">
+        {/* Background Overlay */}
+        <div className="absolute inset-0 bg-[url('/GA3.jpg')] bg-cover bg-center opacity-20 mix-blend-luminosity"></div>
+        <div className="absolute inset-0 bg-linear-to-b from-[#002561]/80 to-[#00102a]/90"></div>
+
+        <div className="relative z-10 max-w-sm w-full bg-white/10 backdrop-blur-2xl shadow-2xl rounded-3xl p-8 border border-white/20 text-center animate-in fade-in zoom-in duration-500">
+          <div className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg border-4 border-white/20">
+            <span className="text-4xl">🔐</span>
+          </div>
+          <h1 className="text-2xl font-black text-white tracking-widest uppercase mb-1">Proctor Gateway</h1>
+          <p className="text-[#009CB4] text-[10px] font-bold tracking-[0.3em] mb-8">AUTHORIZED PERSONNEL ONLY</p>
+
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div>
+              <input
+                type="password"
+                placeholder="ENTER SECURE PIN"
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value)}
+                className={`w-full bg-black/40 border-2 rounded-xl p-4 text-center text-white text-xl tracking-[0.4em] font-mono focus:outline-none transition-all placeholder-white/30
+                  ${loginError ? 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]' : 'border-white/20 focus:border-[#009CB4]'}`}
+                autoFocus
+              />
+              {loginError && <p className="text-red-400 text-xs font-bold tracking-widest mt-3 animate-pulse uppercase">❌ Invalid PIN. Access Denied.</p>}
+            </div>
+            <button type="submit" className="w-full py-4 bg-[#009CB4] hover:bg-[#007b8e] text-white font-black tracking-widest uppercase rounded-xl transition-all shadow-[0_0_20px_rgba(0,156,180,0.4)] hover:scale-[1.02]">
+              Verify Identity
+            </button>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
+
+  // ==========================================
+  // RENDER 2: PDF VIEWER / PRINT MODE
   // ==========================================
   if (viewingResultId) {
-    if (resLoading) return <div className="text-center p-20 text-2xl font-bold animate-pulse text-blue-800">Menyiapkan Dokumen Laporan...</div>
+    if (resLoading) return (
+      <div className="min-h-screen bg-[#00102a] flex items-center justify-center text-center">
+        <div><div className="w-16 h-16 border-4 border-[#009CB4] border-t-transparent rounded-full animate-spin mx-auto mb-6"></div><div className="text-white font-black tracking-widest uppercase animate-pulse">Generating Report...</div></div>
+      </div>
+    )
 
     return (
       <>
@@ -279,62 +380,62 @@ Garuda Indonesia / GMF AeroAsia`)
           }
         `}</style>
 
-        {/* PANEL KONTROL TANDA TANGAN ADMIN (Tersembunyi saat diprint) */}
+        {/* PANEL KONTROL TANDA TANGAN ADMIN (SIDEBAR MODERN) */}
         {showSignPanel && (
-          <div className="fixed top-0 left-0 h-full w-80 bg-white shadow-2xl z-50 print-hidden p-4 overflow-y-auto border-r border-gray-300">
-            <div className="flex justify-between items-center mb-4 border-b pb-2">
-              <h2 className="font-bold text-blue-900">✍️ Admin Signatures</h2>
-              <button onClick={() => setShowSignPanel(false)} className="text-red-500 font-bold hover:text-red-700">✕ Close</button>
+          <div className="fixed top-0 left-0 h-full w-80 bg-white shadow-[20px_0_50px_rgba(0,0,0,0.5)] z-50 print-hidden flex flex-col border-r border-gray-200">
+            <div className="bg-[#002561] text-white p-5 flex justify-between items-center shadow-md">
+              <div>
+                <h2 className="font-black tracking-widest uppercase text-sm">Signatures</h2>
+                <p className="text-[#009CB4] text-[10px]">Admin Authentication</p>
+              </div>
+              <button onClick={() => setShowSignPanel(false)} className="text-white hover:text-red-400 font-bold transition">✕</button>
             </div>
 
-            <div className="space-y-6">
-              {/* Assessor Sign */}
-              <div className="bg-gray-50 p-3 rounded border">
-                <label className="block text-xs font-bold text-gray-700 mb-1">Assessor Name:</label>
-                <input type="text" className="w-full text-sm p-1 border border-gray-300 rounded uppercase mb-2" value={adminSignData.assessorName} onChange={(e) => setAdminSignData(prev => ({...prev, assessorName: e.target.value}))} />
-                <label className="block text-xs font-bold text-gray-700 mb-1">Assessor Sign:</label>
-                <AdminSignaturePad 
-                  value={adminSignData.assessorSign} 
-                  onChange={(val) => setAdminSignData(prev => ({...prev, assessorSign: val}))} 
-                />
+            <div className="p-5 overflow-y-auto space-y-6 bg-gray-50 flex-1">
+              <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <label className="block text-[11px] font-bold text-[#002561] mb-1 uppercase tracking-wider">Assessor Name</label>
+                <input type="text" className="w-full text-sm p-2 border-2 border-gray-200 rounded-lg outline-none focus:border-[#009CB4] uppercase mb-3 transition" value={adminSignData.assessorName} onChange={(e) => setAdminSignData(prev => ({...prev, assessorName: e.target.value}))} />
+                <label className="block text-[11px] font-bold text-[#002561] mb-1 uppercase tracking-wider">Assessor Sign</label>
+                <AdminSignaturePad value={adminSignData.assessorSign} onChange={(val) => setAdminSignData(prev => ({...prev, assessorSign: val}))} />
               </div>
 
-              {/* Inspector Sign */}
-              <div className="bg-gray-50 p-3 rounded border">
-                <label className="block text-xs font-bold text-gray-700 mb-1">Inspector Name:</label>
-                <input type="text" className="w-full text-sm p-1 border border-gray-300 rounded uppercase mb-2" value={adminSignData.inspectorName} onChange={(e) => setAdminSignData(prev => ({...prev, inspectorName: e.target.value}))} />
-                <label className="block text-xs font-bold text-gray-700 mb-1">Inspector Sign:</label>
-                <AdminSignaturePad 
-                  value={adminSignData.inspectorSign} 
-                  onChange={(val) => setAdminSignData(prev => ({...prev, inspectorSign: val}))} 
-                />
+              <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <label className="block text-[11px] font-bold text-[#002561] mb-1 uppercase tracking-wider">Inspector Name</label>
+                <input type="text" className="w-full text-sm p-2 border-2 border-gray-200 rounded-lg outline-none focus:border-[#009CB4] uppercase mb-3 transition" value={adminSignData.inspectorName} onChange={(e) => setAdminSignData(prev => ({...prev, inspectorName: e.target.value}))} />
+                <label className="block text-[11px] font-bold text-[#002561] mb-1 uppercase tracking-wider">Inspector Sign</label>
+                <AdminSignaturePad value={adminSignData.inspectorSign} onChange={(val) => setAdminSignData(prev => ({...prev, inspectorSign: val}))} />
               </div>
 
-              {/* Examiner 1 Sign */}
-              <div className="bg-gray-50 p-3 rounded border">
-                <label className="block text-xs font-bold text-gray-700 mb-1">Examiner 1 Sign (No Name):</label>
-                <AdminSignaturePad 
-                  value={adminSignData.examiner1Sign} 
-                  onChange={(val) => setAdminSignData(prev => ({...prev, examiner1Sign: val}))} 
-                />
+              <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <label className="block text-[11px] font-bold text-[#002561] mb-1 uppercase tracking-wider">Examiner 1 Sign</label>
+                <AdminSignaturePad value={adminSignData.examiner1Sign} onChange={(val) => setAdminSignData(prev => ({...prev, examiner1Sign: val}))} />
               </div>
 
-              {/* Examiner 2 Sign */}
-              <div className="bg-gray-50 p-3 rounded border">
-                <label className="block text-xs font-bold text-gray-700 mb-1">Examiner 2 Sign (No Name):</label>
-                <AdminSignaturePad 
-                  value={adminSignData.examiner2Sign} 
-                  onChange={(val) => setAdminSignData(prev => ({...prev, examiner2Sign: val}))} 
-                />
+              <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <label className="block text-[11px] font-bold text-[#002561] mb-1 uppercase tracking-wider">Examiner 2 Sign</label>
+                <AdminSignaturePad value={adminSignData.examiner2Sign} onChange={(val) => setAdminSignData(prev => ({...prev, examiner2Sign: val}))} />
               </div>
             </div>
           </div>
         )}
 
-        <div className={`min-h-screen bg-gray-500 py-10 flex flex-col items-center gap-10 print:bg-white print:py-0 print:gap-0 print:block transition-all ${showSignPanel ? 'ml-80' : ''}`}>
+        <div className={`min-h-screen bg-[#111827] py-12 flex flex-col items-center gap-12 print:bg-white print:py-0 print:gap-0 print:block transition-all duration-300 ${showSignPanel ? 'ml-80' : ''}`}>
           
+          {/* CONTROL BUTTONS MENGAMBANG DI PDF VIEWER */}
+          <div className="fixed bottom-8 right-8 flex flex-col gap-3 print-hidden z-40">
+            <button onClick={() => setShowSignPanel(true)} className="bg-[#009CB4] text-white px-6 py-4 rounded-2xl shadow-[0_10px_20px_rgba(0,156,180,0.3)] font-black uppercase tracking-widest hover:bg-[#007b8e] hover:scale-105 transition-all flex items-center justify-center gap-3">
+              <span className="text-xl">✍️</span> Fill Signatures
+            </button>
+            <button onClick={() => window.print()} className="bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-[0_10px_20px_rgba(5,150,105,0.3)] font-black uppercase tracking-widest hover:bg-emerald-700 hover:scale-105 transition-all flex items-center justify-center gap-3">
+              <span className="text-xl">🖨️</span> Print Document
+            </button>
+            <button onClick={() => setViewingResultId(null)} className="bg-gray-700 text-white px-6 py-4 rounded-2xl shadow-[0_10px_20px_rgba(0,0,0,0.3)] font-black uppercase tracking-widest hover:bg-gray-800 hover:scale-105 transition-all flex items-center justify-center gap-3">
+              <span className="text-xl">🔙</span> Back to Dashboard
+            </button>
+          </div>
+
           {/* ================= PAGE 1: FORMULIR PENILAIAN ================= */}
-          <div className="w-[210mm] h-[296mm] bg-white shadow-2xl p-[10mm] print:shadow-none print:w-full print:h-[296mm] print:p-[10mm] relative flex flex-col overflow-hidden bg-white">
+          <div className="w-[210mm] h-[296mm] bg-white shadow-[0_0_40px_rgba(0,0,0,0.5)] p-[10mm] print:shadow-none print:w-full print:h-[296mm] print:p-[10mm] relative flex flex-col overflow-hidden">
             <div className="flex flex-col items-center justify-center mb-6">
                <img src="/logo.png" alt="Garuda Indonesia" className="h-14 mb-2 object-contain" />
                <div className="font-serif font-bold text-lg leading-tight">Garuda Indonesia</div>
@@ -376,7 +477,7 @@ Garuda Indonesia / GMF AeroAsia`)
                   </div>
                   <div className="border-b border-black w-full mb-1"></div>
                   <p className="font-bold text-sm tracking-widest uppercase">
-                    {adminSignData.assessorName ? adminSignData.assessorName : '(                             )'}
+                    {adminSignData.assessorName ? adminSignData.assessorName : '(                             )'}
                   </p> 
                 </div>
 
@@ -402,11 +503,11 @@ Garuda Indonesia / GMF AeroAsia`)
 
               </div>
             </div>
-            <div className="flex justify-between text-[10px] font-mono mt-2"><span>Form MZ 1-17.1 (10-13)</span><span>1 of 2</span></div>
+            <div className="flex justify-between text-[10px] font-mono mt-2 text-gray-500"><span>Form MZ 1-17.1 (10-13)</span><span>1 of 2</span></div>
           </div>
 
           {/* ================= PAGE 2: LEMBAR JAWABAN ================= */}
-          <div className="w-[210mm] h-[296mm] bg-white shadow-2xl p-[10mm] print:shadow-none print:w-full print:h-[296mm] print:p-[10mm] relative flex flex-col overflow-hidden page-break">
+          <div className="w-[210mm] h-[296mm] bg-white shadow-[0_0_40px_rgba(0,0,0,0.5)] p-[10mm] print:shadow-none print:w-full print:h-[296mm] print:p-[10mm] relative flex flex-col overflow-hidden page-break">
             <div className="flex items-start gap-4 mb-2 border-b-2 border-black pb-2">
                <img src="/logo.png" alt="Logo" className="h-10 object-contain" />
                <div><div className="font-bold text-sm">Garuda Indonesia</div><div className="text-[10px] text-gray-600">Airworthiness Management</div></div>
@@ -460,7 +561,7 @@ Garuda Indonesia / GMF AeroAsia`)
                              <div className="text-center font-bold border-r border-gray-300">{no}</div>
                              {['A', 'B', 'C', 'D'].map((opt) => (
                                 <div key={opt} className="border-r last:border-r-0 border-gray-300 relative flex justify-center items-center h-full">
-                                   {userAns === opt && (<div className="absolute text-xl font-handwriting text-blue-900 pointer-events-none" style={{top: '-6px'}}>X</div>)}
+                                   {userAns === opt && (<div className="absolute text-xl font-handwriting text-[#002561] pointer-events-none" style={{top: '-6px'}}>X</div>)}
                                 </div>
                              ))}
                           </div>
@@ -503,11 +604,11 @@ Garuda Indonesia / GMF AeroAsia`)
                    </div>
                </div>
             </div>
-            <div className="flex justify-between text-[9px] mt-1 font-mono"><span>Form MZ-1-16.3(3-12)</span></div>
+            <div className="flex justify-between text-[9px] mt-1 font-mono text-gray-500"><span>Form MZ-1-16.3(3-12)</span></div>
           </div>
 
           {/* ================= PAGE 3: GMF STYLE ================= */}
-          <div className="w-[210mm] h-[296mm] bg-white shadow-2xl p-[10mm] print:shadow-none print:w-full print:h-[296mm] print:p-[10mm] relative flex flex-col overflow-hidden page-break">
+          <div className="w-[210mm] h-[296mm] bg-white shadow-[0_0_40px_rgba(0,0,0,0.5)] p-[10mm] print:shadow-none print:w-full print:h-[296mm] print:p-[10mm] relative flex flex-col overflow-hidden page-break">
             <div className="flex items-end justify-between mb-4 border-b-2 border-black pb-2">
                <div className="flex items-center gap-4"><img src="/logo.png" alt="Logo" className="h-10 object-contain" /><div className="flex flex-col"><div className="font-bold text-sm">GMF AeroAsia</div><div className="text-[9px] italic text-gray-700">(Garuda Indonesia Group)</div></div></div>
                <div className="text-center flex-1"><h1 className="text-xl font-bold uppercase tracking-wider mt-2">ANSWER SHEET</h1></div>
@@ -569,7 +670,7 @@ Garuda Indonesia / GMF AeroAsia`)
                              <div className="text-center font-bold border-r border-gray-300">{no}</div>
                              {['A', 'B', 'C', 'D'].map((opt) => (
                                 <div key={opt} className="border-r last:border-r-0 border-gray-300 relative flex justify-center items-center h-full">
-                                   {userAns === opt && (<div className="absolute text-xl font-handwriting text-blue-900 pointer-events-none" style={{top: '-6px'}}>X</div>)}
+                                   {userAns === opt && (<div className="absolute text-xl font-handwriting text-[#002561] pointer-events-none" style={{top: '-6px'}}>X</div>)}
                                 </div>
                              ))}
                           </div>
@@ -600,71 +701,123 @@ Garuda Indonesia / GMF AeroAsia`)
                    <div className="w-1/4 p-2 flex flex-col items-center justify-center"><span className="font-bold text-lg mb-2">SCORE :</span><span className="font-bold text-4xl">{resPrintStats.score}</span></div>
                </div>
             </div>
-            <div className="text-[9px] mt-1 font-mono">FORM GMF/Q-448</div>
+            <div className="text-[9px] mt-1 font-mono text-gray-500">FORM GMF/Q-448</div>
           </div>
-
-          <div className="fixed bottom-8 right-8 flex flex-col gap-2 print-hidden z-50">
-            <button onClick={() => setShowSignPanel(true)} className="bg-orange-600 text-white px-6 py-3 rounded-full shadow-lg font-bold hover:bg-orange-700 flex items-center gap-2 border border-white">
-              ✍️ ISI TANDA TANGAN
-            </button>
-            <button onClick={() => window.print()} className="bg-blue-900 text-white px-6 py-3 rounded-full shadow-lg font-bold hover:bg-blue-800 flex items-center gap-2 border border-white">
-              🖨️ CETAK DOKUMEN
-            </button>
-            <button onClick={() => setViewingResultId(null)} className="bg-gray-700 text-white px-6 py-3 rounded-full shadow-lg font-bold hover:bg-gray-800 flex items-center gap-2 border border-white">
-              🔙 KEMBALI KE ADMIN
-            </button>
-          </div>
-
         </div>
       </>
     )
   }
 
+  // ==========================================
+  // RENDER 3: DASHBOARD UTAMA ADMIN
+  // ==========================================
   return (
-    <div className="min-h-screen bg-gray-50 p-8 relative">
+    <div className="min-h-screen bg-[#F4F6F9] font-sans pb-20">
+      
+      {/* MODAL FOTO KANDIDAT */}
       {selectedPhoto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4 backdrop-blur-sm transition-opacity" onClick={() => setSelectedPhoto(null)}>
-          <div className="relative bg-white p-2 rounded-lg shadow-2xl max-w-md w-full animate-pulse-once" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setSelectedPhoto(null)} className="absolute -top-4 -right-4 bg-red-600 hover:bg-red-700 text-white rounded-full w-10 h-10 flex items-center justify-center font-bold shadow-lg border-2 border-white transition-transform transform hover:scale-110">✕</button>
-            <img src={selectedPhoto} alt="Zoomed Candidate" className="w-full h-auto max-h-[80vh] object-contain rounded" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#00102a]/90 p-4 backdrop-blur-md transition-opacity" onClick={() => setSelectedPhoto(null)}>
+          <div className="relative bg-white p-3 rounded-2xl shadow-2xl max-w-md w-full transform transition-all scale-105" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setSelectedPhoto(null)} className="absolute -top-4 -right-4 bg-red-500 hover:bg-red-600 text-white rounded-full w-10 h-10 flex items-center justify-center font-bold shadow-lg border-2 border-white transition-transform hover:scale-110">✕</button>
+            <img src={selectedPhoto} alt="Candidate" className="w-full h-auto max-h-[80vh] object-cover rounded-xl" />
           </div>
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto space-y-8">
+      {/* HEADER COMMAND CENTER */}
+      <div className="bg-[#002561] text-white pt-10 pb-24 px-6 md:px-12 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-1/3 h-full bg-[#009CB4] opacity-20 skew-x-[-20deg] translate-x-10 pointer-events-none"></div>
+        <div className="absolute bottom-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-[#009CB4] to-transparent opacity-50"></div>
         
-        <div className="bg-blue-900 text-white p-6 rounded-lg shadow-lg flex flex-col md:flex-row justify-between items-center gap-4">
-          <div><h1 className="text-2xl font-bold uppercase tracking-wider">Proctor Dashboard</h1><p className="text-blue-200 text-sm mt-1">Live Examination Control Center</p></div>
-          <div className="flex flex-wrap gap-2">
-            <Link href="/admin/add-question" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded font-bold shadow text-sm border border-indigo-400 transition">➕ Add Question</Link>
-            <Link href="/admin/bulk-import" className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded font-bold shadow text-sm border border-emerald-400 transition">🚀 Smart Import</Link>
-            <Link href="/admin/fix" className="px-4 py-2 bg-rose-600 hover:bg-rose-500 rounded font-bold shadow text-sm border border-rose-400 transition">🏥 Database Diagnostics</Link>
-            <button onClick={fetchData} className="px-4 py-2 bg-blue-700 hover:bg-blue-600 rounded font-bold shadow text-sm border border-blue-500 transition">🔄 Refresh</button>
+        <div className="max-w-[1600px] mx-auto flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 relative z-10">
+          <div className="flex items-center gap-5">
+            <div className="bg-white p-3 rounded-2xl shadow-lg">
+              <img src="/logo.png" alt="Garuda Logo" className="h-10 w-auto object-contain" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-black uppercase tracking-widest text-white drop-shadow-md">Proctor Center</h1>
+              <p className="text-[#009CB4] text-xs font-bold tracking-[0.2em] mt-1">EXAMINATION CONTROL DASHBOARD</p>
+            </div>
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-3">
+            <Link href="/admin/add-question" className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-sm border border-white/20 transition-all backdrop-blur-sm flex items-center gap-2">
+              <span>➕</span> Add Question
+            </Link>
+            <Link href="/admin/bulk-import" className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-sm border border-white/20 transition-all backdrop-blur-sm flex items-center gap-2">
+              <span>🚀</span> Bulk Import
+            </Link>
+            <Link href="/admin/fix" className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-sm border border-white/20 transition-all backdrop-blur-sm flex items-center gap-2">
+              <span>🛠️</span> Database Diagnostics
+            </Link>
+            <button onClick={fetchData} className="px-5 py-2.5 bg-[#009CB4] hover:bg-[#007b8e] text-white rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(0,156,180,0.4)] transition-all flex items-center gap-2">
+              <span>🔄</span> Refresh Data
+            </button>
+            <button onClick={handleLogout} className="px-5 py-2.5 bg-red-600/80 hover:bg-red-600 text-white rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(220,38,38,0.4)] transition-all flex items-center gap-2 ml-4 border border-red-500">
+              <span>🚪</span> Lock Gateway
+            </button>
           </div>
         </div>
+      </div>
 
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="p-4 border-b border-gray-200 bg-gray-100 flex justify-between items-center">
-            <h2 className="text-lg font-bold text-gray-800">1. Exam Access Codes</h2>
-            <button onClick={generateNewToken} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded shadow transition">+ Generate New Code</button>
+      {/* CONTENT CARDS */}
+      <div className="max-w-[1600px] mx-auto px-4 md:px-12 -mt-12 space-y-10 relative z-20">
+        
+        {/* CARD 1: EXAM ACCESS CODES */}
+        <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col">
+          <div className="p-6 md:p-8 border-b border-gray-100 bg-white flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+              <h2 className="text-xl font-black text-[#002561] tracking-wider uppercase flex items-center gap-3">
+                <span className="p-2 bg-blue-50 text-blue-600 rounded-lg text-lg">🔑</span> 
+                Active Access Codes
+              </h2>
+            </div>
+            <button onClick={generateNewToken} className="px-6 py-3 bg-gradient-to-r from-[#009CB4] to-[#007b8e] hover:from-[#007b8e] hover:to-[#005c6b] text-white text-sm font-black tracking-widest uppercase rounded-xl shadow-lg transition-all hover:scale-[1.02]">
+              + Generate Code
+            </button>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-sm">
-              <thead><tr className="bg-gray-50 text-gray-600 border-b"><th className="p-3">Type A/C</th><th className="p-3">Kategori</th><th className="p-3">Subject</th><th className="p-3">Exam No</th><th className="p-3">Access Code</th><th className="p-3 text-center">Gate</th></tr></thead>
-              <tbody>
-                {tokens.map((token) => (
-                  <tr key={token.id} className="border-b hover:bg-gray-50">
-                    <td className="p-3 font-semibold text-blue-700">{token.type_of_ac || '-'}</td><td className="p-3">{token.kategori || '-'}</td><td className="p-3 font-medium">{token.subject}</td><td className="p-3">{token.exam_no}</td>
-                    <td className="p-3">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold tracking-widest text-gray-800">{token.access_code}</span>
-                        <button onClick={() => { navigator.clipboard.writeText(token.access_code); alert(`Kode Akses ${token.access_code} berhasil disalin!`)}} title="Copy Access Code" className="p-1.5 bg-gray-100 hover:bg-blue-100 hover:text-blue-700 text-gray-500 rounded transition border border-gray-200 shadow-sm text-xs">📋</button>
+          
+          <div className="overflow-x-auto w-full">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead>
+                <tr className="bg-gray-50/50 text-[#002561] border-b border-gray-100 text-xs uppercase tracking-wider font-bold">
+                  <th className="p-5 pl-8">Aircraft Type</th>
+                  <th className="p-5">Category</th>
+                  <th className="p-5">Module</th>
+                  <th className="p-5">Access Code</th>
+                  <th className="p-5 text-center pr-8">Gate Control</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {tokens.length === 0 ? (<tr><td colSpan={5} className="p-8 text-center text-gray-400 italic">No access codes generated yet.</td></tr>) : 
+                tokens.map((token) => (
+                  <tr key={token.id} className="hover:bg-blue-50/30 transition-colors group">
+                    <td className="p-5 pl-8 font-black text-[#002561]">{token.type_of_ac || '-'}</td>
+                    <td className="p-5 text-gray-600 font-medium">{token.kategori || '-'}</td>
+                    <td className="p-5">
+                      <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-md font-bold text-xs uppercase border border-gray-200">
+                        {token.subject} #{token.exam_no}
+                      </span>
+                    </td>
+                    <td className="p-5">
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono font-black tracking-[0.3em] text-lg text-[#009CB4] bg-[#009CB4]/10 px-4 py-1.5 rounded-lg border border-[#009CB4]/20">{token.access_code}</span>
+                        <button onClick={() => { navigator.clipboard.writeText(token.access_code); alert(`Kode Akses ${token.access_code} berhasil disalin!`)}} className="p-2 text-gray-400 hover:text-[#009CB4] hover:bg-[#009CB4]/10 rounded-lg transition-all opacity-0 group-hover:opacity-100" title="Copy Code">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                        </button>
                       </div>
                     </td>
-                    <td className="p-3 text-center">
+                    <td className="p-5 pr-8 text-center">
                       <div className="flex items-center justify-center gap-2">
-                        <button onClick={() => toggleTokenActive(token.id, token.is_active)} className={`px-4 py-1 rounded text-white font-bold text-xs w-20 shadow-sm transition ${token.is_active ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}`}>{token.is_active ? 'OPEN' : 'CLOSE'}</button>
-                        <button onClick={() => handleDeleteToken(token.id, token.access_code)} title="Hapus Token" className="px-3 py-1 bg-gray-200 hover:bg-red-600 hover:text-white transition text-gray-700 text-xs font-bold rounded shadow-sm border border-gray-300">🗑️</button>
+                        <button onClick={() => toggleTokenActive(token.id, token.is_active)} 
+                          className={`px-4 py-1.5 rounded-lg font-black text-[10px] tracking-widest uppercase w-24 border transition-all shadow-sm
+                          ${token.is_active ? 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100' : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'}`}>
+                          {token.is_active ? '● OPEN' : '● CLOSED'}
+                        </button>
+                        <button onClick={() => handleDeleteToken(token.id, token.access_code)} title="Delete Code" 
+                          className="p-1.5 text-red-300 hover:text-white hover:bg-red-500 rounded-lg transition-all border border-transparent hover:border-red-600">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -674,49 +827,100 @@ Garuda Indonesia / GMF AeroAsia`)
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="p-4 border-b border-gray-200 bg-gray-100"><h2 className="text-lg font-bold text-gray-800">2. Live Participants & Results</h2></div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-sm whitespace-nowrap">
-              <thead><tr className="bg-gray-50 text-gray-600 border-b"><th className="p-3">Candidate Info</th><th className="p-3">Exam Detail</th><th className="p-3">Exam Status</th><th className="p-3">Assessment Results</th><th className="p-3 text-center">Action / Print</th></tr></thead>
-              <tbody>
-                {sessions.map((session) => {
+        {/* CARD 2: LIVE PARTICIPANTS */}
+        <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col">
+          <div className="p-6 md:p-8 border-b border-gray-100 bg-white">
+            <h2 className="text-xl font-black text-[#002561] tracking-wider uppercase flex items-center gap-3">
+              <span className="p-2 bg-blue-50 text-blue-600 rounded-lg text-lg">🧑</span> 
+              Live Participants & Results
+            </h2>
+          </div>
+          
+          <div className="overflow-x-auto w-full">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead>
+                <tr className="bg-gray-50/50 text-[#002561] border-b border-gray-100 text-xs uppercase tracking-wider font-bold">
+                  <th className="p-5 pl-8">Candidate Profile</th>
+                  <th className="p-5">Exam Detail</th>
+                  <th className="p-5">Exam Status</th>
+                  <th className="p-5">Assessment Results</th>
+                  <th className="p-5 text-center pr-8">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {sessions.length === 0 ? (<tr><td colSpan={5} className="p-8 text-center text-gray-400 italic">No participants found.</td></tr>) :
+                sessions.map((session) => {
                   const candidateName = session.candidates?.name || 'Unknown'
                   const candidateNo = session.candidates?.personnel_no || 'N/A'
                   const candidateEmail = session.candidates?.email || 'No Email'
                   const candidatePhoto = session.candidates?.photo || null 
-                  const examInfo = `${session.type_of_ac || '-'} | ${session.kategori || '-'} | ${session.subject} No.${session.exam_no}`
-                  
                   const isPassed = session.final_passed !== null ? session.final_passed : (session.score >= 75)
 
                   return (
-                    <tr key={session.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3 align-middle">
-                        <div className="flex items-center gap-3">
-                          {candidatePhoto ? (<img src={candidatePhoto} alt={candidateName} title="Klik perbesar" onClick={() => setSelectedPhoto(candidatePhoto)} className="w-10 h-10 rounded-full object-cover border-2 border-gray-300 shadow-sm cursor-pointer hover:scale-110" />) : (<div className="w-10 h-10 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center text-gray-500 text-xs font-bold">?</div>)}
-                          <div className="flex flex-col"><span className="font-bold uppercase text-gray-800">{candidateName} <span className="text-gray-500 font-mono text-xs">({candidateNo})</span></span><span className="text-xs text-blue-600">{candidateEmail}</span></div>
+                    <tr key={session.id} className="hover:bg-blue-50/30 transition-colors">
+                      <td className="p-5 pl-8 align-middle">
+                        <div className="flex items-center gap-4">
+                          {candidatePhoto ? (
+                            <img src={candidatePhoto} onClick={() => setSelectedPhoto(candidatePhoto)} className="w-12 h-12 rounded-full object-cover border-2 border-gray-200 shadow-sm cursor-pointer hover:border-[#009CB4] transition-all" alt={candidateName} />
+                          ) : (
+                            <div className="w-12 h-12 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-400 font-bold">?</div>
+                          )}
+                          <div className="flex flex-col">
+                            <span className="font-black uppercase text-[#002561]">{candidateName} <span className="text-[#009CB4] text-[10px] ml-1 tracking-widest px-1.5 py-0.5 bg-[#009CB4]/10 rounded border border-[#009CB4]/20">{candidateNo}</span></span>
+                            <span className="text-[11px] text-gray-500 font-medium">{candidateEmail}</span>
+                          </div>
                         </div>
                       </td>
-                      <td className="p-3 text-gray-600 align-middle text-xs font-medium">{examInfo}</td>
-                      <td className="p-3 align-middle">
-                        {session.status === 'COMPLETED' ? <span className="text-green-600 font-bold">✅ Finish <span className="text-gray-600 font-normal">(Score: {session.score})</span></span> : <span className="text-blue-600 font-bold animate-pulse">⏳ Progress <span className="text-gray-500 font-normal text-xs">(Live Score: {session.score})</span></span>}
+                      <td className="p-5 align-middle">
+                         <div className="flex flex-col gap-1">
+                            <span className="font-bold text-gray-800 text-xs">{session.type_of_ac || '-'}</span>
+                            <span className="text-[10px] text-gray-500 font-medium uppercase">{session.kategori || '-'} • {session.subject} #{session.exam_no}</span>
+                         </div>
                       </td>
-                      <td className="p-3 align-middle">
+                      <td className="p-5 align-middle">
+                        {session.status === 'COMPLETED' ? (
+                          <div className="flex items-center gap-2">
+                             <span className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-md border border-emerald-200 text-xs font-bold uppercase tracking-widest"><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg> Finished</span>
+                             <span className="font-black text-[#002561]">Score: {session.score}</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                             <span className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 rounded-md border border-amber-200 text-xs font-bold uppercase tracking-widest animate-pulse"><div className="w-2 h-2 rounded-full bg-amber-500"></div> Progress</span>
+                             <span className="font-bold text-gray-400 text-xs">Score: {session.score}</span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-5 align-middle">
                         {session.status === 'COMPLETED' ? (
                            <div className="flex items-center gap-2">
-                             <div className={`px-2 py-1 text-xs font-bold rounded border ${isPassed ? 'bg-green-100 text-green-700 border-green-300' : 'bg-red-100 text-red-700 border-red-300'}`}>{isPassed ? 'PASSED' : 'FAILED'}</div>
-                             {isPassed ? (<button onClick={() => handleAdjustResult(session.id, false)} title="Ubah jadi Gagal" className="text-xs bg-gray-200 hover:bg-red-500 hover:text-white px-2 py-1 rounded">Gagalkan</button>) : (<button onClick={() => handleAdjustResult(session.id, true)} title="Ubah jadi Lulus" className="text-xs bg-gray-200 hover:bg-green-500 hover:text-white px-2 py-1 rounded">Luluskan</button>)}
+                             <div className={`px-3 py-1 text-[11px] font-black tracking-widest uppercase rounded-md border shadow-sm ${isPassed ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-red-500 text-white border-red-600'}`}>{isPassed ? 'PASSED' : 'FAILED'}</div>
+                             {/* Override Buttons */}
+                             {isPassed ? (
+                               <button onClick={() => handleAdjustResult(session.id, false)} title="Force Fail" className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-all"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                             ) : (
+                               <button onClick={() => handleAdjustResult(session.id, true)} title="Force Pass" className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-all"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg></button>
+                             )}
                            </div>
-                        ) : <span className="text-xs text-gray-400">-</span>}
+                        ) : <span className="text-gray-300 font-bold">-</span>}
                       </td>
-                      <td className="p-3 text-center align-middle space-x-2">
-                        {session.status === 'COMPLETED' && (
-                           <>
-                             <button onClick={() => handleViewResult(session.id)} className="px-3 py-1 bg-blue-100 hover:bg-blue-200 transition text-blue-700 text-xs font-semibold rounded shadow-sm border border-blue-200">🖨️ Print</button>
-                             <button onClick={() => handleSendEmail(session)} className={`px-3 py-1 transition text-xs font-semibold rounded shadow-sm border ${session.email_sent ? 'bg-gray-100 text-gray-500 border-gray-300' : 'bg-emerald-100 text-emerald-700 border-emerald-300 hover:bg-emerald-200'}`}>{session.email_sent ? '📧 Dikirim' : '📧 Send Email'}</button>
-                           </>
-                        )}
-                        <button onClick={() => resetParticipant(session.id, candidateName)} className="px-3 py-1 bg-red-100 hover:bg-red-200 transition text-red-700 text-xs font-semibold rounded shadow-sm border border-red-200">Reset</button>
+                      <td className="p-5 pr-8 text-center align-middle">
+                        <div className="flex items-center justify-center gap-2">
+                          {session.status === 'COMPLETED' && (
+                             <>
+                               <button onClick={() => handleViewResult(session.id)} className="px-3 py-1.5 bg-[#002561] hover:bg-[#00102a] text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-md transition-all flex items-center gap-1.5 hover:scale-105">
+                                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                                 Print
+                               </button>
+                               <button onClick={() => handleSendEmail(session)} className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg shadow-sm border transition-all flex items-center gap-1.5 hover:scale-105 ${session.email_sent ? 'bg-gray-100 text-gray-400 border-gray-200' : 'bg-white text-[#009CB4] border-[#009CB4] hover:bg-[#009CB4]/10'}`}>
+                                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                 {session.email_sent ? 'Sent' : 'Email'}
+                               </button>
+                             </>
+                          )}
+                          <button onClick={() => resetParticipant(session.id, candidateName)} title="Delete/Reset Record" className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -732,7 +936,7 @@ Garuda Indonesia / GMF AeroAsia`)
 }
 
 // ==========================================
-// KOMPONEN HELPER (TIDAK PERLU DIUBAH)
+// KOMPONEN HELPER (TIDAK BERUBAH AGAR PRINT AMAN)
 // ==========================================
 function formatDate(dateString: any) {
   if (!dateString) return ''
@@ -747,9 +951,6 @@ function DataRow({ label, value }: { label: string, value: string }) {
   )
 }
 
-// ==========================================
-// KOMPONEN CANVAS SIGNATURE PAD ADMIN
-// ==========================================
 function AdminSignaturePad({ value, onChange }: { value: string, onChange: (val: string) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isDrawing, setIsDrawing] = useState(false)
@@ -758,11 +959,7 @@ function AdminSignaturePad({ value, onChange }: { value: string, onChange: (val:
     const canvas = canvasRef.current
     if (canvas) {
       const ctx = canvas.getContext('2d')
-      if (ctx) {
-        ctx.lineWidth = 2
-        ctx.lineCap = 'round'
-        ctx.strokeStyle = '#000000' // Tinta hitam
-      }
+      if (ctx) { ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.strokeStyle = '#000000' }
     }
   }, [])
 
@@ -781,10 +978,7 @@ function AdminSignaturePad({ value, onChange }: { value: string, onChange: (val:
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     const { x, y } = getCoordinates(e)
-    ctx.beginPath()
-    ctx.moveTo(x, y)
-    setIsDrawing(true)
-    canvas.setPointerCapture(e.pointerId)
+    ctx.beginPath(); ctx.moveTo(x, y); setIsDrawing(true); canvas.setPointerCapture(e.pointerId)
   }
 
   const draw = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -794,40 +988,31 @@ function AdminSignaturePad({ value, onChange }: { value: string, onChange: (val:
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     const { x, y } = getCoordinates(e)
-    ctx.lineTo(x, y)
-    ctx.stroke()
+    ctx.lineTo(x, y); ctx.stroke()
   }
 
   const stopDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return
     setIsDrawing(false)
     const canvas = canvasRef.current
-    if (canvas) {
-      canvas.releasePointerCapture(e.pointerId)
-      onChange(canvas.toDataURL('image/png'))
-    }
+    if (canvas) { canvas.releasePointerCapture(e.pointerId); onChange(canvas.toDataURL('image/png')) }
   }
 
   const clearSignature = () => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
-    if (ctx) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-      onChange('')
-    }
+    if (ctx) { ctx.clearRect(0, 0, canvas.width, canvas.height); onChange('') }
   }
 
   return (
     <div className="relative">
-      <div className="border-2 border-dashed border-gray-400 bg-white cursor-crosshair">
-        <canvas 
-          ref={canvasRef} width={250} height={100} className="w-full h-24 touch-none"
-          onPointerDown={startDrawing} onPointerMove={draw} onPointerUp={stopDrawing} onPointerOut={stopDrawing}
-        />
-        {!value && <span className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-gray-300 text-xs pointer-events-none">Sign Here</span>}
+      <div className="border-2 border-dashed border-gray-400 bg-white cursor-crosshair rounded-lg overflow-hidden">
+        <canvas ref={canvasRef} width={250} height={100} className="w-full h-24 touch-none"
+          onPointerDown={startDrawing} onPointerMove={draw} onPointerUp={stopDrawing} onPointerOut={stopDrawing} />
+        {!value && <span className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-gray-300 text-xs font-bold tracking-widest uppercase pointer-events-none">Sign Here</span>}
       </div>
-      <button type="button" onClick={clearSignature} className="text-[10px] text-red-600 mt-1 hover:underline">Hapus Tanda Tangan</button>
+      <button type="button" onClick={clearSignature} className="text-[10px] font-bold tracking-widest uppercase text-red-500 mt-1.5 hover:text-red-700">Clear Signature</button>
     </div>
   )
 }
