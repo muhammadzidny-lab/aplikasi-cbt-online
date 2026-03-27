@@ -1,0 +1,30 @@
+16 maret 2026
+
+✅
+
+foto lebh dari 2mb ✅
+code exam notif otomatis✅
+admin tambahin sisa warning, dikurangin✅
+ganti url jadi JKTMQS EXAM
+GANTI CNA
+admin tambahin sisa waktu✅
+admin tambahin unit masing2 peserta✅
+
+tambah page admin kalo lanjut exam diambil dari nopeg di exam detail
+
+page admin untuk candidate profile sesuai diurut alfabet
+
+form email
+
+saat peserta mengerjakan harus bisa oncam dan ditampilkan di page admin✅
+
+
+JKTMQS-EXAMINATION
+JKTMQS-EXAMINATION/ADMIN
+JKTMQS-EXAMINATION/DATABASE
+
+DATABASE LOCAL MQ1
+
+
+FILTER LOCAL PERSONNEL REPORT, REPORT TYPE AUTHORIZATION HOLDER DAN SPESIAL AUTHORIZATION HOLDER. DI FILTER DARI PT GARUDA ATAU GMF TRUS LANGSUNG JADI EXCEL
+

@@ -15,7 +15,6 @@ function SelectExamContent() {
   const [kategori, setKategori] = useState('Airframe & Powerplant')
   const [subject, setSubject] = useState('RENEWAL')
   const [examNo, setExamNo] = useState('1') 
-  const [accessCode, setAccessCode] = useState('')
 
   const handleStart = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -27,6 +26,7 @@ function SelectExamContent() {
       return
     }
 
+    // 1. Cek Data Kandidat
     const { data: candidateData, error: candidateError } = await supabase
       .from('candidates')
       .select('id')
@@ -42,6 +42,7 @@ function SelectExamContent() {
     }
     const candidateInternalId = candidateData.id
 
+    // 2. LOGIKA BARU: AUTO-GATE SYSTEM (Tanpa Access Code)
     const { data: tokenData, error: tokenError } = await supabase
       .from('exam_tokens')
       .select('*')
@@ -49,21 +50,18 @@ function SelectExamContent() {
       .eq('kategori', kategori)
       .eq('subject', subject)
       .eq('exam_no', parseInt(examNo))
-      .eq('access_code', accessCode)
-      .single()
+      .eq('is_active', true) // Syarat mutlak: Harus berstatus OPEN di Admin
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
-    if (tokenError || !tokenData) {
-      alert('KODE SALAH! Pastikan Type A/C, Kategori, Subject, Exam No, dan Kode semuanya sesuai dengan dari Pengawas.')
+    if (!tokenData) {
+      alert('🔒 THE EXAM IS NOT OPEN YET!\n\nThe exam session for this module has not been activated. Please wait for instructions from the Invigilator to begin.')
       setLoading(false)
       return
     }
 
-    if (tokenData.is_active !== true) {
-      alert('UJIAN BELUM DIBUKA ATAU SUDAH DITUTUP OLEH PENGAWAS.')
-      setLoading(false)
-      return
-    }
-
+    // 3. Cek apakah kandidat sudah pernah mengerjakan
     const { data: existingResult } = await supabase
       .from('exam_results')
       .select('id, status')
@@ -85,6 +83,7 @@ function SelectExamContent() {
       }
     }
 
+    // 4. Buat Sesi Baru jika lolos semua pengecekan
     const { data: resultData, error: resultError } = await supabase
       .from('exam_results')
       .insert([{
@@ -110,9 +109,6 @@ function SelectExamContent() {
   return (
     <div className="min-h-screen bg-[#F4F6F9] py-12 px-4 flex items-center justify-center font-sans">
       
-      {/* ========================================== */}
-      {/* CARD FORM DENGAN DESAIN MODERN SOLID BIKIN FOKUS */}
-      {/* ========================================== */}
       <div className="max-w-md w-full bg-white shadow-2xl rounded-[2rem] overflow-hidden border border-gray-100 p-8 md:p-10">
         
         {/* HEADER MINIMALIS */}
@@ -121,14 +117,14 @@ function SelectExamContent() {
             ID: {personnelNo || 'UNKNOWN'}
           </span>
           <h1 className="text-3xl font-black text-[#002561] tracking-widest uppercase">
-            Select Exam
+            Select Module
           </h1>
           <div className="w-12 h-1.5 bg-[#009CB4] mx-auto mt-4 rounded-full"></div>
         </div>
 
+        {/* Form space dirapatkan dari space-y-6 menjadi space-y-5 */}
         <form onSubmit={handleStart} className="space-y-5">
           
-          {/* INPUT FIELDS DENGAN DESAIN MODERN */}
           <div>
             <label className="block text-[11px] font-bold text-gray-500 tracking-wider mb-1.5 uppercase ml-1">Type of A/C</label>
             <select value={typeOfAC} onChange={(e) => setTypeOfAC(e.target.value)} 
@@ -171,23 +167,32 @@ function SelectExamContent() {
             </div>
           </div>
 
-          {/* DIVIDER HALUS */}
-          <div className="py-2">
+          {/* DIVIDER HALUS DIRAPATKAN */}
+          <div className="py-1">
             <div className="h-px w-full bg-gradient-to-r from-transparent via-gray-200 to-transparent"></div>
           </div>
 
-          {/* ACCESS CODE DENGAN GAYA PIN/TOKEN MODERN */}
-          <div>
-            <label className="block text-[11px] font-bold text-[#009CB4] tracking-widest mb-2 uppercase text-center">Security Access Code</label>
-            <input type="text" required placeholder="1CB1R2" value={accessCode} onChange={(e) => setAccessCode(e.target.value.toUpperCase())} 
-              className="w-full bg-gray-50 border-2 border-[#002561]/10 rounded-2xl p-4 text-center text-2xl focus:ring-0 focus:bg-white focus:border-[#009CB4] focus:shadow-[0_0_15px_rgba(0,156,180,0.1)] outline-none tracking-[0.4em] font-mono font-black text-[#002561] uppercase transition-all placeholder-gray-300" />
-          </div>
-
-          <div className="pt-4">
+          {/* TOMBOL DESAIN BARU (GRADIENT & ICON ANIMASI) */}
+          <div className="pt-2">
             <button type="submit" disabled={loading} 
-              className={`w-full py-4 px-6 text-white font-black tracking-widest uppercase rounded-2xl shadow-lg transition-all duration-300 transform 
-                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#002561] hover:bg-[#001c4a] hover:scale-[1.02] hover:shadow-xl hover:shadow-[#002561]/20'}`}>
-              {loading ? 'Authenticating...' : 'Enter Examination'}
+              className={`group relative w-full flex justify-center py-4 px-6 border border-transparent text-sm font-black rounded-2xl text-white uppercase tracking-[0.2em] transition-all duration-300 transform shadow-[0_8px_20px_rgba(0,37,97,0.2)]
+                ${loading 
+                  ? 'bg-gray-400 cursor-not-allowed' 
+                  : 'bg-gradient-to-r from-[#002561] to-[#004294] hover:from-[#001c4a] hover:to-[#002561] hover:shadow-[0_10px_25px_rgba(0,37,97,0.4)] hover:-translate-y-1'
+                }`}>
+              {loading ? (
+                <div className="flex items-center justify-center gap-3">
+                  <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                  Checking Gate...
+                </div>
+              ) : (
+                <div className="flex items-center justify-center gap-3">
+                  Enter Examination
+                  <svg className="w-5 h-5 transform group-hover:translate-x-1.5 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                  </svg>
+                </div>
+              )}
             </button>
           </div>
 

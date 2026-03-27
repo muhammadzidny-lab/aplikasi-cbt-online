@@ -58,19 +58,24 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
   const [examNo, setExamNo] = useState<string>('')
   const [currentBackground, setCurrentBackground] = useState<string>(backgroundImages[0])
 
-  // ==========================================
-  // FITUR KONTROL KECURANGAN (ANTI-CHEAT)
-  // ==========================================
+  // Fitur Anti-Cheat
   const [cheatWarnings, setCheatWarnings] = useState(0)
   const cheatWarningsRef = useRef(0) 
   const lastCheatTime = useRef(0) 
   const isSystemDialogActive = useRef(false) 
-  
-  // 💡 STATE BARU UNTUK MENDETEKSI REFRESH
   const isUnloading = useRef(false) 
   const cheatTimeout = useRef<NodeJS.Timeout | null>(null)
   
-  const MAX_WARNINGS = 12
+  const MAX_WARNINGS = 5
+
+  // ==========================================
+  // FITUR LIVE CAMERA CCTV PROCTORING (HQ MODE)
+  // ==========================================
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const camIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const channelRef = useRef<any>(null);
+  const [cameraError, setCameraError] = useState(false);
 
   useEffect(() => {
     const savedWarnings = localStorage.getItem(`cheat_${examResultId}`)
@@ -93,7 +98,6 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
       }
       if (resultData.status === 'COMPLETED') { router.push(`/result/${examResultId}`); return }
 
-      // Set Data Header
       setCandidateId(resultData.candidates?.personnel_no || 'UNKNOWN')
       setTypeOfAC(resultData.type_of_ac || 'Aircraft')
       setKategori(resultData.kategori || 'Category')
@@ -143,7 +147,7 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
       const { data: existingAnswersData } = await supabase.from('exam_answers').select('question_id, selected_option_id').eq('result_id', examResultId)
       if (existingAnswersData && existingAnswersData.length > 0) {
         const mappedAnswers: Record<string, string> = {}
-        existingAnswersData.forEach((ans) => { mappedAnswers[ans.question_id] = ans.selected_option_id })
+        existingAnswersData.forEach((ans: any) => { mappedAnswers[ans.question_id] = ans.selected_option_id })
         setAnswers(mappedAnswers)
       }
       setLoading(false)
@@ -151,7 +155,63 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
     fetchExamData()
   }, [examResultId, router])
 
-  // Timer Countdown
+  // ==========================================
+  // SUPABASE BROADCAST UNTUK LIVE CCTV 
+  // (KUALITAS TINGGI - 1 DETIK SEKALI)
+  // ==========================================
+  useEffect(() => {
+    if (loading) return;
+
+    async function startLiveProctoring() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 }, audio: false });
+        if (videoRef.current) { videoRef.current.srcObject = stream; }
+
+        const channel = supabase.channel('proctoring-room');
+        channelRef.current = channel;
+
+        channel.subscribe((status: string) => {
+          if (status === 'SUBSCRIBED') {
+            camIntervalRef.current = setInterval(() => {
+              const video = videoRef.current;
+              const canvas = canvasRef.current;
+              if (!video || !canvas) return;
+
+              const ctx = canvas.getContext('2d');
+              if (!ctx) return;
+              
+              // Balik gambar (un-mirror) secara horizontal sebelum dikirim
+              ctx.save();
+              ctx.scale(-1, 1);
+              ctx.drawImage(video, -320, 0, 320, 240);
+              ctx.restore();
+              
+              const base64Data = canvas.toDataURL('image/jpeg', 0.8);
+
+              channel.send({
+                type: 'broadcast',
+                event: 'camera-frame',
+                payload: { resultId: examResultId, image: base64Data }
+              });
+            }, 1000); 
+          }
+        });
+      } catch (err) {
+        console.error("Camera Error:", err);
+        setCameraError(true);
+      }
+    }
+
+    startLiveProctoring();
+
+    return () => {
+      if (camIntervalRef.current) clearInterval(camIntervalRef.current);
+      if (channelRef.current) supabase.removeChannel(channelRef.current);
+      const stream = videoRef.current?.srcObject as MediaStream;
+      stream?.getTracks().forEach((track: any) => track.stop());
+    };
+  }, [loading, examResultId]);
+
   useEffect(() => {
     if (timeLeft <= 0 && !loading) return
     const timer = setInterval(() => {
@@ -163,23 +223,20 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
     return () => clearInterval(timer)
   }, [timeLeft, loading])
 
-  // Mengganti Background Acak saat ganti soal
   useEffect(() => {
     const randomIndex = Math.floor(Math.random() * backgroundImages.length);
     setCurrentBackground(backgroundImages[randomIndex]);
   }, [currentIdx]);
 
-  // Detektor Kecurangan (DIPERBARUI DENGAN ANTI-REFRESH BUG)
+  // Fitur Anti-Cheat
   useEffect(() => {
     if (loading) return;
 
     const handleCheatDetected = () => {
       if (isSystemDialogActive.current) return;
 
-      // 💡 Beri jeda 300ms. Jika ini adalah Refresh, fungsi handleBeforeUnload 
-      // akan membatalkan eksekusi kode di dalam setTimeout ini.
       cheatTimeout.current = setTimeout(() => {
-        if (isUnloading.current) return; // Batalkan jika user sedang refresh/menutup tab
+        if (isUnloading.current) return; 
 
         const now = Date.now();
         if (now - lastCheatTime.current < 3000) return; 
@@ -190,6 +247,8 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
         cheatWarningsRef.current += 1;
         setCheatWarnings(cheatWarningsRef.current);
         localStorage.setItem(`cheat_${examResultId}`, cheatWarningsRef.current.toString());
+
+        supabase.from('exam_results').update({ cheat_warnings: cheatWarningsRef.current }).eq('id', examResultId).then(); 
 
         if (cheatWarningsRef.current >= MAX_WARNINGS) {
           isSystemDialogActive.current = true;
@@ -204,14 +263,13 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
           alert(`⚠️ FRAUD WARNING (${cheatWarningsRef.current}/${MAX_WARNINGS}) ⚠️\n\nScreen focus lost! You were detected opening another application, using split screen, or switching tabs.\n\nIf this occurs ${MAX_WARNINGS} times, the exam will be automatically submitted!`);
           setTimeout(() => { isSystemDialogActive.current = false; }, 500);
         }
-      }, 300); // Jeda 300 milidetik
+      }, 300); 
     };
 
     const handleVisibilityChange = () => { if (document.hidden) handleCheatDetected(); };
     const handleWindowBlur = () => { handleCheatDetected(); };
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
     
-    // 💡 Event ketika user menekan Refresh/Tutup Tab
     const handleBeforeUnload = () => {
       isUnloading.current = true;
       if (cheatTimeout.current) clearTimeout(cheatTimeout.current);
@@ -247,13 +305,13 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
 
   const updateLiveScore = async () => {
     const { data: allCurrentAnswers } = await supabase.from('exam_answers').select('question_id, selected_option_id').eq('result_id', examResultId)
-    const questionIds = questions.map(q => q.id)
+    const questionIds = questions.map((q: any) => q.id)
     const { data: correctOptions } = await supabase.from('options').select('question_id, id').in('question_id', questionIds).eq('is_correct', true)
 
     let correctCount = 0
     if (allCurrentAnswers && correctOptions && questions.length > 0) {
-      allCurrentAnswers.forEach(ans => {
-        const isCorrect = correctOptions.some(opt => opt.question_id === ans.question_id && opt.id === ans.selected_option_id)
+      allCurrentAnswers.forEach((ans: any) => {
+        const isCorrect = correctOptions.some((opt: any) => opt.question_id === ans.question_id && opt.id === ans.selected_option_id)
         if (isCorrect) correctCount++
       })
     }
@@ -265,9 +323,7 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
     if (!forceSubmitType) { 
       const answeredCount = Object.keys(answers).length;
       const unansweredCount = questions.length - answeredCount;
-
-      isSystemDialogActive.current = true; // Pause cheat detector
-
+      isSystemDialogActive.current = true;
       if (unansweredCount > 0) {
         const confirmIncomplete = window.confirm(`⚠️ WARNING!\n\nYou still have ${unansweredCount} UNANSWERED questions.\nAre you sure you want to end and submit the exam now?`);
         setTimeout(() => { isSystemDialogActive.current = false; }, 500); 
@@ -282,7 +338,6 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
       alert('⏳ Time is up! Your answers will be automatically submitted.');
       setTimeout(() => { isSystemDialogActive.current = false; }, 500);
     }
-
     setLoading(true)
     await supabase.from('exam_results').update({ status: 'COMPLETED', finished_at: new Date().toISOString() }).eq('id', examResultId)
     localStorage.removeItem(`cheat_${examResultId}`)
@@ -310,6 +365,10 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
   return (
     <div className="flex flex-col h-screen relative font-sans overflow-hidden select-none" onContextMenu={(e)=> e.preventDefault()}>
       
+      {/* ELEMEN CCTV (Transparan agar browser tetap merekam) */}
+      <video ref={videoRef} autoPlay playsInline muted className="opacity-0 absolute pointer-events-none -z-50" width={320} height={240}></video>
+      <canvas ref={canvasRef} className="opacity-0 absolute pointer-events-none -z-50" width={320} height={240}></canvas>
+
       {/* BACKGROUND BERUBAH ACAK */}
       <div className="absolute inset-0 z-0 bg-[#00102a]">
         <div className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-50 mix-blend-luminosity transition-opacity duration-1000 ease-in-out" 
@@ -317,7 +376,7 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
         <div className="absolute inset-0 bg-linear-to-b from-[#002561]/50 via-transparent to-[#002561]/90"></div>
       </div>
 
-      {/* HEADER EXAM - DENGAN LOGO & DETAIL LENGKAP */}
+      {/* HEADER EXAM */}
       <div className="relative z-10 bg-[#002561]/90 backdrop-blur-md border-b border-white/20 shadow-lg px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-5">
           <div className="bg-white p-2.5 rounded-xl hidden md:block shadow-md">
@@ -325,7 +384,6 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
           </div>
           <div>
             <h1 className="font-black text-xl text-white tracking-widest uppercase mb-1">{typeOfAC}</h1>
-            {/* BADGES INFO UJIAN */}
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[#009CB4] text-[11px] font-bold tracking-[0.2em] uppercase mr-2">CANDIDATE: {candidateId}</span>
               <span className="text-white/80 text-[10px] font-bold tracking-widest uppercase border border-white/30 bg-white/5 px-2 py-0.5 rounded-md">{kategori}</span>
@@ -336,6 +394,11 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
         </div>
         
         <div className="flex items-center gap-4">
+          {cameraError && (
+             <span className="text-xs font-black text-red-200 bg-red-800 px-3 py-1 rounded border border-red-500 animate-pulse">
+                ⚠️ CAMERA ERROR
+             </span>
+          )}
           {cheatWarnings > 0 && (
             <span className="text-xs font-black text-white bg-red-600/90 px-4 py-2 rounded-full animate-pulse tracking-widest border border-red-400 shadow-[0_0_15px_rgba(220,38,38,0.5)]">
               VIOLATION: {cheatWarnings}/{MAX_WARNINGS}
@@ -351,7 +414,7 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex overflow-hidden relative z-10 p-4 gap-6 max-w-[1400px] mx-auto w-full">
         
-        {/* KIRI: AREA SOAL UTAMA */}
+        {/* area soal utama */}
         <div className="flex-1 flex flex-col bg-white/95 backdrop-blur-xl rounded-[2rem] shadow-2xl border border-white/40 overflow-hidden">
           <div className="flex-1 p-8 md:p-12 overflow-y-auto">
             
@@ -387,7 +450,6 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
                           {opt.option_text}
                         </span>
                         
-                        {/* Radio Button Indicator */}
                         <div className={`w-6 h-6 shrink-0 flex items-center justify-center rounded-full border-2 transition-all duration-300
                           ${isSelected ? 'bg-[#009CB4] border-[#009CB4]' : 'bg-transparent border-gray-300'}`}>
                           {isSelected && <div className="w-2.5 h-2.5 bg-white rounded-full"></div>}
@@ -430,7 +492,7 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
           </div>
         </div>
 
-        {/* KANAN: MAP SOAL (SIDEBAR) */}
+        {/* nav map sidebar */}
         <div className="w-80 bg-white/95 backdrop-blur-xl rounded-[2rem] shadow-2xl border border-white/40 flex-col overflow-hidden hidden lg:flex">
           <div className="bg-[#002561] p-6 text-center border-b-4 border-[#009CB4]">
              <h3 className="font-black text-white tracking-widest uppercase text-sm">Navigation Map</h3>

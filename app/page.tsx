@@ -7,20 +7,13 @@ import { supabase } from '../lib/supabaseClient'
 export default function Home() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [isCompressing, setIsCompressing] = useState(false)
   
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    personnel_no: '',
-    unit: '',
-    rating_sought: '',
+    name: '', email: '', personnel_no: '', unit: '', rating_sought: '',
     exam_date: new Date().toISOString().split('T')[0], 
-    dgac_amel_no: '',
-    dgac_rating: '',
-    ga_auth_no: '',
-    ga_rating: '',
-    photo: '',
-    signature: '' 
+    dgac_amel_no: '', dgac_rating: '', ga_auth_no: '', ga_rating: '',
+    photo: '', signature: '' 
   })
 
   // ==========================================
@@ -33,11 +26,7 @@ export default function Home() {
     const canvas = canvasRef.current
     if (canvas) {
       const ctx = canvas.getContext('2d')
-      if (ctx) {
-        ctx.lineWidth = 3
-        ctx.lineCap = 'round'
-        ctx.strokeStyle = '#000000' 
-      }
+      if (ctx) { ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = '#000000' }
     }
   }, [])
 
@@ -47,58 +36,40 @@ export default function Home() {
     const rect = canvas.getBoundingClientRect()
     const scaleX = canvas.width / rect.width
     const scaleY = canvas.height / rect.height
-    return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY
-    }
+    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY }
   }
 
   const startDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    
+    const canvas = canvasRef.current; if (!canvas) return
+    const ctx = canvas.getContext('2d'); if (!ctx) return
     const { x, y } = getCoordinates(e)
-    ctx.beginPath()
-    ctx.moveTo(x, y)
-    setIsDrawing(true)
-    canvas.setPointerCapture(e.pointerId) 
+    ctx.beginPath(); ctx.moveTo(x, y); setIsDrawing(true); canvas.setPointerCapture(e.pointerId) 
   }
 
   const draw = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    
+    const canvas = canvasRef.current; if (!canvas) return
+    const ctx = canvas.getContext('2d'); if (!ctx) return
     const { x, y } = getCoordinates(e)
-    ctx.lineTo(x, y)
-    ctx.stroke()
+    ctx.lineTo(x, y); ctx.stroke()
   }
 
   const stopDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return
     setIsDrawing(false)
     const canvas = canvasRef.current
-    if (canvas) {
-      canvas.releasePointerCapture(e.pointerId)
-      setFormData(prev => ({ ...prev, signature: canvas.toDataURL('image/png') }))
-    }
+    if (canvas) { canvas.releasePointerCapture(e.pointerId); setFormData(prev => ({ ...prev, signature: canvas.toDataURL('image/png') })) }
   }
 
   const clearSignature = () => {
-    const canvas = canvasRef.current
-    if (!canvas) return
+    const canvas = canvasRef.current; if (!canvas) return
     const ctx = canvas.getContext('2d')
-    if (ctx) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-      setFormData(prev => ({ ...prev, signature: '' }))
-    }
+    if (ctx) { ctx.clearRect(0, 0, canvas.width, canvas.height); setFormData(prev => ({ ...prev, signature: '' })) }
   }
-  // ==========================================
 
+  // ==========================================
+  // FITUR AUTO-COMPRESS FOTO KANDIDAT
+  // ==========================================
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -110,54 +81,66 @@ export default function Home() {
       return
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert('GAGAL: Ukuran foto maksimal adalah 2 MB!')
-      e.target.value = '' 
-      return
-    }
+    setIsCompressing(true)
 
     const reader = new FileReader()
-    reader.onloadend = () => {
-      setFormData({ ...formData, photo: reader.result as string })
-    }
     reader.readAsDataURL(file)
+    reader.onload = (event) => {
+      const img = new Image()
+      img.src = event.target?.result as string
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const MAX_WIDTH = 600 
+        
+        let width = img.width
+        let height = img.height
+
+        if (width > MAX_WIDTH) {
+          height = Math.round((height * MAX_WIDTH) / width)
+          width = MAX_WIDTH
+        }
+
+        canvas.width = width
+        canvas.height = height
+
+        const ctx = canvas.getContext('2d')
+        ctx?.drawImage(img, 0, 0, width, height)
+
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7)
+        setFormData({ ...formData, photo: compressedBase64 })
+        setIsCompressing(false)
+      }
+    }
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    })
+    setFormData({ ...formData, [e.target.name]: e.target.value })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     const personnelRegex = /^\d{6}$/
-    if (!personnelRegex.test(formData.personnel_no)) {
-      alert('GAGAL: Personnel No. harus terdiri dari tepat 6 angka!')
-      return 
-    }
-
-    if (!formData.photo) {
-      alert('GAGAL: Harap upload foto Anda terlebih dahulu!')
-      return
-    }
-
-    if (!formData.signature) {
-      alert('GAGAL: Harap isi Tanda Tangan Digital Anda terlebih dahulu!')
-      return
-    }
+    if (!personnelRegex.test(formData.personnel_no)) { alert('GAGAL: Personnel No. harus terdiri dari tepat 6 angka!'); return }
+    if (!formData.photo) { alert('GAGAL: Harap upload foto Anda terlebih dahulu!'); return }
+    if (!formData.signature) { alert('GAGAL: Harap isi Tanda Tangan Digital Anda terlebih dahulu!'); return }
 
     setLoading(true)
 
+    // ==========================================
+    // MEMINTA IZIN AKSES KAMERA DI AWAL
+    // ==========================================
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream.getTracks().forEach(track => track.stop());
+    } catch (err) {
+      alert('⚠️ GAGAL: AKSES KAMERA DITOLAK!\n\nSistem ujian memerlukan akses kamera untuk pengawasan (CCTV). Harap izinkan akses kamera di pop-up browser Anda untuk melanjutkan pendaftaran.');
+      setLoading(false);
+      return; 
+    }
+
     const { data: existingCandidate } = await supabase
-      .from('candidates')
-      .select('id')
-      .eq('personnel_no', formData.personnel_no)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+      .from('candidates').select('id').eq('personnel_no', formData.personnel_no).order('created_at', { ascending: false }).limit(1).maybeSingle()
 
     if (existingCandidate) {
       const { error: updateError } = await supabase.from('candidates').update(formData).eq('id', existingCandidate.id)
@@ -173,27 +156,17 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#F4F6F9] py-12 px-4 flex items-center justify-center font-sans">
       
-      {/* Container Utama Form (Card Putih Bersih) */}
       <div className="max-w-4xl w-full mx-auto bg-white shadow-2xl rounded-2xl overflow-hidden border border-gray-200">
         
         {/* HEADER DENGAN LOGO GARUDA INDONESIA */}
         <div className="bg-[#002561] p-8 text-white text-center md:text-left relative overflow-hidden border-b-4 border-[#009CB4]">
-          {/* Ornamen Garis Miring */}
           <div className="absolute top-0 right-0 w-64 h-full bg-[#009CB4] opacity-10 skew-x-[-20deg] translate-x-10"></div>
           
           <div className="relative z-10 flex flex-col md:flex-row items-center gap-6">
-            <img 
-              src="/logo.png" 
-              alt="Garuda Indonesia Logo" 
-              className="h-16 w-auto bg-white p-2 rounded-lg shadow-md"
-            />
+            <img src="/logo.png" alt="Garuda Indonesia Logo" className="h-16 w-auto bg-white p-2 rounded-lg shadow-md" />
             <div>
-              <h1 className="text-2xl font-black uppercase tracking-widest text-white shadow-sm">
-                Candidate Registration
-              </h1>
-              <p className="text-[#009CB4] text-xs font-bold tracking-[0.2em] mt-1">
-                EXCELLENCE IN AVIATION TRAINING
-              </p>
+              <h1 className="text-2xl font-black uppercase tracking-widest text-white shadow-sm">Candidate Registration</h1>
+              <p className="text-[#009CB4] text-xs font-bold tracking-[0.2em] mt-1">EXCELLENCE IN AVIATION TRAINING</p>
             </div>
           </div>
         </div>
@@ -243,22 +216,34 @@ export default function Home() {
             </div>
 
             {/* INPUT FOTO */}
-            <div className="md:col-span-2 bg-[#F4F6F9] p-6 rounded-xl border-2 border-dashed border-gray-300 hover:border-[#009CB4] transition-colors">
-              <label className="block text-sm font-black text-[#002561] mb-3">Upload Photo <span className="text-gray-500 font-normal">(JPG/PNG, Max 2MB)</span></label>
-              <input required type="file" accept=".jpg,.jpeg,.png" onChange={handlePhotoChange} 
-                className="w-full text-sm text-gray-500 file:mr-4 file:py-2.5 file:px-6 file:rounded-full file:border-0 file:text-xs file:font-bold file:tracking-wider file:bg-[#002561] file:text-white hover:file:opacity-90 cursor-pointer transition-all" />
-              {formData.photo && (
-                <div className="mt-4 flex items-center gap-3 text-sm font-bold text-[#009CB4] bg-white p-3 rounded-lg border border-gray-100 shadow-sm inline-flex">
-                  <span className="text-xl">✅</span>
-                  <span>Photo Attached Successfully!</span>
-                  <img src={formData.photo} alt="Preview" className="h-10 w-10 object-cover rounded-full border-2 border-[#009CB4] ml-2" />
-                </div>
+            <div className="md:col-span-2 bg-[#F4F6F9] p-6 rounded-xl border-2 border-dashed border-gray-300 hover:border-[#009CB4] transition-colors relative overflow-hidden">
+              <label className="block text-sm font-black text-[#002561] mb-3">Upload Photo <span className="text-gray-500 font-normal">(Auto Optimized)</span></label>
+              
+              {isCompressing ? (
+                 <div className="flex items-center gap-3 text-[#009CB4] font-bold text-sm animate-pulse py-2">
+                    <span className="w-5 h-5 border-2 border-[#009CB4] border-t-transparent rounded-full animate-spin"></span>
+                    Optimizing Image...
+                 </div>
+              ) : formData.photo ? (
+                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                    <div className="flex items-center gap-3 text-sm font-bold text-emerald-600 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                      <span className="text-xl">✅</span>
+                      <span>Photo Attached Successfully!</span>
+                      <img src={formData.photo} alt="Preview" className="h-10 w-10 object-cover rounded-full border-2 border-emerald-500 ml-2 shadow-sm" />
+                    </div>
+                    <button type="button" onClick={() => setFormData({...formData, photo: ''})} className="text-xs text-red-500 font-bold bg-red-50 px-4 py-2 rounded-lg hover:bg-red-100 hover:text-red-700 transition-colors border border-red-100">
+                       ↻ Change Photo
+                    </button>
+                 </div>
+              ) : (
+                <input type="file" accept=".jpg,.jpeg,.png" onChange={handlePhotoChange} 
+                  className="w-full text-sm text-gray-500 file:mr-4 file:py-2.5 file:px-6 file:rounded-full file:border-0 file:text-xs file:font-bold file:tracking-wider file:bg-[#002561] file:text-white hover:file:opacity-90 cursor-pointer transition-all" />
               )}
             </div>
 
-            {/* INPUT TANDA TANGAN DIGITAL */}
+            {/* INPUT TANDA TANGAN DIGITAL - DIPERBAIKI (Hilangkan block, ganti h-45) */}
             <div className="md:col-span-2">
-              <label className="block text-sm font-black text-[#002561] mb-3 flex justify-between items-end">
+              <label className="flex text-sm font-black text-[#002561] mb-3 justify-between items-end">
                 <span>Digital Signature</span>
                 <button type="button" onClick={clearSignature} className="text-xs text-[#8B5E34] hover:text-white font-bold border border-[#8B5E34] rounded-full px-4 py-1.5 bg-transparent hover:bg-[#8B5E34] transition-all">
                   Clear Signature
@@ -266,14 +251,9 @@ export default function Home() {
               </label>
               <div className="border-2 border-gray-200 rounded-xl bg-gray-50 overflow-hidden relative shadow-inner focus-within:border-[#009CB4] transition-colors">
                 <canvas 
-                  ref={canvasRef}
-                  width={600} 
-                  height={180} 
-                  className="w-full h-[180px] touch-none cursor-crosshair bg-white"
-                  onPointerDown={startDrawing}
-                  onPointerMove={draw}
-                  onPointerUp={stopDrawing}
-                  onPointerOut={stopDrawing}
+                  ref={canvasRef} width={600} height={180} 
+                  className="w-full h-45 touch-none cursor-crosshair bg-white"
+                  onPointerDown={startDrawing} onPointerMove={draw} onPointerUp={stopDrawing} onPointerOut={stopDrawing}
                 />
                 {!formData.signature && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -327,10 +307,15 @@ export default function Home() {
           </div>
 
           <div className="pt-6">
-            <button type="submit" disabled={loading} 
-              className={`w-full py-4 px-6 text-white font-black tracking-widest uppercase rounded-xl shadow-xl transition-all duration-300 transform 
-                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#009CB4] hover:opacity-90 hover:scale-[1.01] shadow-[#009CB4]/40'}`}>
-              {loading ? 'Processing Data...' : 'Proceed to Examination'}
+            <button type="submit" disabled={loading || isCompressing} 
+              className={`w-full py-4 px-6 text-white font-black tracking-widest uppercase rounded-xl shadow-xl transition-all duration-300 transform flex justify-center items-center gap-3
+                ${(loading || isCompressing) ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#009CB4] hover:opacity-90 hover:scale-[1.01] shadow-[#009CB4]/40'}`}>
+              {loading ? (
+                <>
+                  <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                  Connecting Camera...
+                </>
+              ) : 'Proceed to Examination'}
             </button>
           </div>
 
