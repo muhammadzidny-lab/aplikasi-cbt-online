@@ -58,7 +58,7 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
   const [examNo, setExamNo] = useState<string>('')
   const [currentBackground, setCurrentBackground] = useState<string>(backgroundImages[0])
 
-  // Fitur Anti-Cheat
+  // Fitur Anti-Cheat (Tanpa Kamera)
   const [cheatWarnings, setCheatWarnings] = useState(0)
   const cheatWarningsRef = useRef(0) 
   const lastCheatTime = useRef(0) 
@@ -67,15 +67,6 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
   const cheatTimeout = useRef<NodeJS.Timeout | null>(null)
   
   const MAX_WARNINGS = 5
-
-  // ==========================================
-  // FITUR LIVE CAMERA CCTV PROCTORING (HQ MODE)
-  // ==========================================
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const camIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const channelRef = useRef<any>(null);
-  const [cameraError, setCameraError] = useState(false);
 
   useEffect(() => {
     const savedWarnings = localStorage.getItem(`cheat_${examResultId}`)
@@ -155,63 +146,6 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
     fetchExamData()
   }, [examResultId, router])
 
-  // ==========================================
-  // SUPABASE BROADCAST UNTUK LIVE CCTV 
-  // (KUALITAS TINGGI - 1 DETIK SEKALI)
-  // ==========================================
-  useEffect(() => {
-    if (loading) return;
-
-    async function startLiveProctoring() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 }, audio: false });
-        if (videoRef.current) { videoRef.current.srcObject = stream; }
-
-        const channel = supabase.channel('proctoring-room');
-        channelRef.current = channel;
-
-        channel.subscribe((status: string) => {
-          if (status === 'SUBSCRIBED') {
-            camIntervalRef.current = setInterval(() => {
-              const video = videoRef.current;
-              const canvas = canvasRef.current;
-              if (!video || !canvas) return;
-
-              const ctx = canvas.getContext('2d');
-              if (!ctx) return;
-              
-              // Balik gambar (un-mirror) secara horizontal sebelum dikirim
-              ctx.save();
-              ctx.scale(-1, 1);
-              ctx.drawImage(video, -320, 0, 320, 240);
-              ctx.restore();
-              
-              const base64Data = canvas.toDataURL('image/jpeg', 0.8);
-
-              channel.send({
-                type: 'broadcast',
-                event: 'camera-frame',
-                payload: { resultId: examResultId, image: base64Data }
-              });
-            }, 1000); 
-          }
-        });
-      } catch (err) {
-        console.error("Camera Error:", err);
-        setCameraError(true);
-      }
-    }
-
-    startLiveProctoring();
-
-    return () => {
-      if (camIntervalRef.current) clearInterval(camIntervalRef.current);
-      if (channelRef.current) supabase.removeChannel(channelRef.current);
-      const stream = videoRef.current?.srcObject as MediaStream;
-      stream?.getTracks().forEach((track: any) => track.stop());
-    };
-  }, [loading, examResultId]);
-
   useEffect(() => {
     if (timeLeft <= 0 && !loading) return
     const timer = setInterval(() => {
@@ -228,7 +162,7 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
     setCurrentBackground(backgroundImages[randomIndex]);
   }, [currentIdx]);
 
-  // Fitur Anti-Cheat
+  // Fitur Anti-Cheat (Tanpa Kamera)
   useEffect(() => {
     if (loading) return;
 
@@ -364,10 +298,6 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
 
   return (
     <div className="flex flex-col h-screen relative font-sans overflow-hidden select-none" onContextMenu={(e)=> e.preventDefault()}>
-      
-      {/* ELEMEN CCTV (Transparan agar browser tetap merekam) */}
-      <video ref={videoRef} autoPlay playsInline muted className="opacity-0 absolute pointer-events-none -z-50" width={320} height={240}></video>
-      <canvas ref={canvasRef} className="opacity-0 absolute pointer-events-none -z-50" width={320} height={240}></canvas>
 
       {/* BACKGROUND BERUBAH ACAK */}
       <div className="absolute inset-0 z-0 bg-[#00102a]">
@@ -394,11 +324,6 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
         </div>
         
         <div className="flex items-center gap-4">
-          {cameraError && (
-             <span className="text-xs font-black text-red-200 bg-red-800 px-3 py-1 rounded border border-red-500 animate-pulse">
-                ⚠️ CAMERA ERROR
-             </span>
-          )}
           {cheatWarnings > 0 && (
             <span className="text-xs font-black text-white bg-red-600/90 px-4 py-2 rounded-full animate-pulse tracking-widest border border-red-400 shadow-[0_0_15px_rgba(220,38,38,0.5)]">
               VIOLATION: {cheatWarnings}/{MAX_WARNINGS}

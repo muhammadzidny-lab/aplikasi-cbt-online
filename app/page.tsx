@@ -121,23 +121,11 @@ export default function Home() {
     e.preventDefault()
 
     const personnelRegex = /^\d{6}$/
-    if (!personnelRegex.test(formData.personnel_no)) { alert('GAGAL: Personnel No. harus terdiri dari tepat 6 angka!'); return }
-    if (!formData.photo) { alert('GAGAL: Harap upload foto Anda terlebih dahulu!'); return }
-    if (!formData.signature) { alert('GAGAL: Harap isi Tanda Tangan Digital Anda terlebih dahulu!'); return }
+    if (!personnelRegex.test(formData.personnel_no)) { alert('FAIL: Personnel No. must consist of exactly 6 digits!'); return }
+    if (!formData.photo) { alert('FAIL: Please upload your photos first!'); return }
+    if (!formData.signature) { alert('FAIL: Please fill in your Digital Signature first!'); return }
 
     setLoading(true)
-
-    // ==========================================
-    // MEMINTA IZIN AKSES KAMERA DI AWAL
-    // ==========================================
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      stream.getTracks().forEach(track => track.stop());
-    } catch (err) {
-      alert('⚠️ GAGAL: AKSES KAMERA DITOLAK!\n\nSistem ujian memerlukan akses kamera untuk pengawasan (CCTV). Harap izinkan akses kamera di pop-up browser Anda untuk melanjutkan pendaftaran.');
-      setLoading(false);
-      return; 
-    }
 
     const { data: existingCandidate } = await supabase
       .from('candidates').select('id').eq('personnel_no', formData.personnel_no).order('created_at', { ascending: false }).limit(1).maybeSingle()
@@ -217,7 +205,7 @@ export default function Home() {
 
             {/* INPUT FOTO */}
             <div className="md:col-span-2 bg-[#F4F6F9] p-6 rounded-xl border-2 border-dashed border-gray-300 hover:border-[#009CB4] transition-colors relative overflow-hidden">
-              <label className="block text-sm font-black text-[#002561] mb-3">Upload Photo <span className="text-gray-500 font-normal">(Auto Optimized)</span></label>
+              <label className="block text-sm font-black text-[#002561] mb-3">Upload Photo <span className="text-gray-500 font-normal"></span></label>
               
               {isCompressing ? (
                  <div className="flex items-center gap-3 text-[#009CB4] font-bold text-sm animate-pulse py-2">
@@ -232,7 +220,7 @@ export default function Home() {
                       <img src={formData.photo} alt="Preview" className="h-10 w-10 object-cover rounded-full border-2 border-emerald-500 ml-2 shadow-sm" />
                     </div>
                     <button type="button" onClick={() => setFormData({...formData, photo: ''})} className="text-xs text-red-500 font-bold bg-red-50 px-4 py-2 rounded-lg hover:bg-red-100 hover:text-red-700 transition-colors border border-red-100">
-                       ↻ Change Photo
+                        ↻ Change Photo
                     </button>
                  </div>
               ) : (
@@ -241,7 +229,7 @@ export default function Home() {
               )}
             </div>
 
-            {/* INPUT TANDA TANGAN DIGITAL - DIPERBAIKI (Hilangkan block, ganti h-45) */}
+            {/* INPUT TANDA TANGAN DIGITAL */}
             <div className="md:col-span-2">
               <label className="flex text-sm font-black text-[#002561] mb-3 justify-between items-end">
                 <span>Digital Signature</span>
@@ -252,7 +240,7 @@ export default function Home() {
               <div className="border-2 border-gray-200 rounded-xl bg-gray-50 overflow-hidden relative shadow-inner focus-within:border-[#009CB4] transition-colors">
                 <canvas 
                   ref={canvasRef} width={600} height={180} 
-                  className="w-full h-45 touch-none cursor-crosshair bg-white"
+                  className="w-full h-80 touch-none cursor-crosshair bg-white"
                   onPointerDown={startDrawing} onPointerMove={draw} onPointerUp={stopDrawing} onPointerOut={stopDrawing}
                 />
                 {!formData.signature && (
@@ -313,7 +301,7 @@ export default function Home() {
               {loading ? (
                 <>
                   <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                  Connecting Camera...
+                  Registering...
                 </>
               ) : 'Proceed to Examination'}
             </button>
