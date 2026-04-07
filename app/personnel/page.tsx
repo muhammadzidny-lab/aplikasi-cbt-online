@@ -71,7 +71,13 @@ export default function PersonnelReportPage() {
 
   const fetchPersonnelData = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await supabase.from('local_personnel').select('*').order('name', { ascending: true })
+    // SOLUSI UTAMA: Melepas limit 1.000 menjadi 10.000 agar data tidak terpotong!
+    const { data, error } = await supabase
+      .from('local_personnel')
+      .select('*')
+      .limit(10000)
+      .order('name', { ascending: true })
+      
     if (error) {
         console.error('Error fetching data:', error)
     } else if (data) {
@@ -84,7 +90,7 @@ export default function PersonnelReportPage() {
     fetchPersonnelData() 
   }, [fetchPersonnelData])
 
-  // FILTERING & GROUPING LOGIC DENGAN TITANIUM SHIELD (ANTI ERROR)
+  // FILTERING & GROUPING LOGIC BERDASARKAN GA LIC NO (SESUAI PERMINTAAN MAS ZIDNY)
   const getFilteredAndGroupedData = () => {
     if (!personnelList || !Array.isArray(personnelList)) return [];
 
@@ -125,15 +131,16 @@ export default function PersonnelReportPage() {
             ac = String(person.aircraft_type || '');
         }
 
-        const safePersNo = String(person.personnel_no || 'UNKNOWN');
+        // PATOKAN GROUPING SEKARANG MENGGUNAKAN GA AUTH NO (GA LIC NO)
+        const safeGaAuth = String(person.ga_auth_no || 'UNKNOWN');
 
-        if (!groupedMap.has(safePersNo)) {
-            groupedMap.set(safePersNo, {
+        if (!groupedMap.has(safeGaAuth)) {
+            groupedMap.set(safeGaAuth, {
                 ...person,
-                details: [{ ac, auth, val, id: person.id }]
+                details: [{ ac, auth, val, status: person.status, id: person.id }]
             });
         } else {
-            groupedMap.get(safePersNo).details.push({ ac, auth, val, id: person.id });
+            groupedMap.get(safeGaAuth).details.push({ ac, auth, val, status: person.status, id: person.id });
         }
     });
 
@@ -142,7 +149,6 @@ export default function PersonnelReportPage() {
 
   const groupedData = getFilteredAndGroupedData() || [];
 
-  // INI FUNGSI YANG TERHAPUS SEBELUMNYA!
   const handlePreview = () => {
     setViewMode('table');
   }
@@ -154,7 +160,7 @@ export default function PersonnelReportPage() {
     groupedData.forEach((row: any) => {
         if (row?.details && Array.isArray(row.details)) {
             row.details.forEach((d: any) => {
-                csvContent += `"${row.personnel_no || ''}","${row.name || ''}","${row.company || ''}","${row.station || ''}","${row.basic_license || ''}","${d.ac || ''}","${d.auth || ''}","${d.val || ''}","${row.special_auth || ''}","${row.status || ''}","${row.ga_auth_no || ''}"\n`;
+                csvContent += `"${row.personnel_no || ''}","${row.name || ''}","${row.company || ''}","${row.station || ''}","${row.basic_license || ''}","${d.ac || ''}","${d.auth || ''}","${d.val || ''}","${row.special_auth || ''}","${d.status || row.status || ''}","${row.ga_auth_no || ''}"\n`;
             });
         }
     });
@@ -226,7 +232,7 @@ export default function PersonnelReportPage() {
     const companyMap = new Map<string, string>()
     
     if (upCompany === 'ALL' && upDataType !== 'Master') {
-        const { data: existingPersonnel } = await supabase.from('local_personnel').select('ga_auth_no, company').eq('report_type', 'Master')
+        const { data: existingPersonnel } = await supabase.from('local_personnel').select('ga_auth_no, company').eq('report_type', 'Master').limit(10000)
         if (existingPersonnel && Array.isArray(existingPersonnel)) {
             existingPersonnel.forEach((p: any) => { if (p?.ga_auth_no && p?.company) companyMap.set(normKey(p.ga_auth_no), p.company) })
         }
@@ -283,16 +289,26 @@ export default function PersonnelReportPage() {
 
         if (columns[colIdx.name]?.trim()) { lastSeen = { name: csvName, gaAuth: csvGaAuthNo, persNo: csvPersNo, station: csvStation, basic: rawBasic }; }
 
+        // AUTO EXPIRED DETECTOR YANG DIPERTAJAM (Bisa baca angka & huruf)
         let autoStatus = 'Active';
-        if (csvValidity && !csvValidity.includes('-1')) {
+        if (csvValidity && !csvValidity.includes('-1') && csvValidity.trim() !== '') {
             const parts = csvValidity.split('/');
             if (parts && parts.length === 3) {
                 const day = parseInt(parts[0], 10);
                 const monthStr = parts[1].toUpperCase();
+                let month = 0;
+                
+                if (isNaN(parseInt(monthStr, 10))) {
+                    const monthMap: any = { JAN:0, FEB:1, MAR:2, APR:3, MAY:4, JUN:5, JUL:6, AUG:7, SEP:8, OCT:9, NOV:10, DEC:11 };
+                    month = monthMap[monthStr] || 0;
+                } else {
+                    month = parseInt(monthStr, 10) - 1;
+                }
+                
                 let year = parseInt(parts[2], 10);
                 if (year < 100) year += 2000;
-                const monthMap: any = { JAN:0, FEB:1, MAR:2, APR:3, MAY:4, JUN:5, JUL:6, AUG:7, SEP:8, OCT:9, NOV:10, DEC:11 };
-                const expDate = new Date(year, monthMap[monthStr] || 0, day);
+                
+                const expDate = new Date(year, month, day);
                 const today = new Date(); today.setHours(0,0,0,0);
                 if (expDate < today) autoStatus = 'Inactive';
             }
@@ -651,14 +667,25 @@ export default function PersonnelReportPage() {
                     </td>
 
                     <td className="p-4 align-top">
-                       <div className={`text-[10px] font-black tracking-widest uppercase px-2.5 py-1 rounded w-fit border ${person?.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                          {String(person?.status || 'Unknown')}
-                       </div>
-                       {person?.details && Array.isArray(person.details) && person.details[0]?.val && (
-                          <div className="text-[11px] font-bold text-gray-500 mt-2 ml-1">
-                             {String(person.details[0].val)}
-                          </div>
-                       )}
+                       <ul className="space-y-2">
+                          {person?.details && Array.isArray(person.details) && person.details.length > 0 ? (
+                              person.details.map((detailItem: any, i: number) => {
+                                  const isAct = detailItem?.status === 'Active';
+                                  return (
+                                      <li key={i} className="flex flex-col gap-1 mb-3">
+                                         <div className={`text-[9px] font-black tracking-widest uppercase px-2 py-0.5 rounded w-fit border ${isAct ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                                            {String(detailItem?.status || 'Unknown')}
+                                         </div>
+                                         {detailItem?.val && (
+                                            <div className="text-[10px] font-bold text-gray-500 ml-1">
+                                               {String(detailItem.val)}
+                                            </div>
+                                         )}
+                                      </li>
+                                  )
+                              })
+                          ) : null}
+                       </ul>
                     </td>
 
                   </tr>
