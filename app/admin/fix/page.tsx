@@ -238,74 +238,120 @@ export default function FixQuestionsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-[#F4F6F9] p-4 md:p-8 font-sans pb-24">
+      <div className="max-w-6xl mx-auto space-y-8">
 
-        {/* HEADER & FILTER GANDA */}
-        <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4 bg-red-600 text-white p-6 rounded-t-lg shadow-lg">
-          <div>
-            <h1 className="text-2xl font-bold uppercase tracking-wider">🛠️ Database Integrity Manager</h1>
-            <p className="text-red-100 text-sm mt-1">Centralized hub for Question Bank diagnostics and hygiene.</p>
+        {/* ========================================== */}
+        {/* HEADER & FILTER GANDA                      */}
+        {/* ========================================== */}
+        <div className="flex flex-col lg:flex-row justify-between lg:items-center bg-[#002561] text-white p-8 rounded-3xl shadow-2xl relative overflow-hidden gap-6">
+          <div className="absolute top-0 right-0 w-1/3 h-full bg-[#009CB4] opacity-20 skew-x-[-20deg] translate-x-10 pointer-events-none"></div>
+          
+          <div className="relative z-10">
+            <h1 className="text-2xl md:text-3xl font-black uppercase tracking-widest flex items-center gap-4">
+              <span className="p-2.5 bg-white/10 rounded-xl text-xl shadow-inner">🛠️</span> Database Manager
+            </h1>
+            <p className="text-[#009CB4] text-xs font-bold tracking-[0.2em] mt-2">DIAGNOSTICS & HYGIENE CENTER</p>
           </div>
           
-          <div className="flex flex-wrap gap-3 items-center">
-            <select value={filterAc} onChange={(e) => setFilterAc(e.target.value)} className="bg-white text-red-900 border-none font-bold py-2 px-4 rounded outline-none shadow cursor-pointer text-sm">
+          <div className="relative z-10 flex flex-col md:flex-row flex-wrap gap-3 items-center w-full lg:w-auto">
+            <select value={filterAc} onChange={(e) => setFilterAc(e.target.value)} className="w-full md:w-auto bg-white text-[#002561] font-bold py-3 px-4 rounded-xl outline-none shadow-lg cursor-pointer text-xs uppercase tracking-wider focus:ring-2 focus:ring-[#009CB4] transition-all">
               <option value="ALL">All Aircrafts & Regulations</option>
               <option value="REGULASI">REGULATIONS Only</option>
-              <option value="Airbus A330-Series">Airbus A330-Series Only</option>
-              <option value="Airbus A330 NEO">Airbus A330 NEO Only</option>
-              <option value="ATR72">ATR72 Only</option>
-              <option value="B737-800 NG">B737-800 NG Only</option>
-              <option value="B737-MAX">B737-MAX Only</option>
-              <option value="B777-300 ER">B777-300 ER Only</option>
+              <option value="Airbus A330-Series">Airbus A330-Series</option>
+              <option value="Airbus A330 NEO">Airbus A330 NEO</option>
+              <option value="B737-800 NG">B737-800 NG</option>
+              <option value="B737-MAX">B737-MAX</option>
+              <option value="B777-300 ER">B777-300 ER</option>
             </select>
 
-            <select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} className="bg-white text-red-900 border-none font-bold py-2 px-4 rounded outline-none shadow cursor-pointer text-sm">
+            <select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} className="w-full md:w-auto bg-white text-[#002561] font-bold py-3 px-4 rounded-xl outline-none shadow-lg cursor-pointer text-xs uppercase tracking-wider focus:ring-2 focus:ring-[#009CB4] transition-all">
               <option value="ALL">All Categories</option>
-              <option value="Airframe & Powerplant">AP (Airframe & Powerplant) Only</option>
-              <option value="Electric & Avionic">EA (Electric & Avionic) Only</option>
-              <option value="General">General (Regulations) Only</option>
+              <option value="Airframe & Powerplant">AP (Airframe & Powerplant)</option>
+              <option value="Electric & Avionic">EA (Electric & Avionic)</option>
+              <option value="General">General (Regulations)</option>
             </select>
 
-            <Link href="/admin" className="px-4 py-2 bg-red-800 hover:bg-red-900 rounded font-bold shadow text-sm">Back to Dashboard</Link>
+            <Link href="/admin" className="w-full md:w-auto text-center px-6 py-3 bg-[#009CB4] hover:bg-[#007b8e] rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_15px_rgba(0,156,180,0.4)] transition-all">
+              Back to Dashboard
+            </Link>
           </div>
         </div>
 
-        {/* TABS NAVIGATION */}
-        <div className="flex bg-white shadow rounded-b-lg overflow-hidden border-b-4 border-red-600 flex-col md:flex-row">
-           <button onClick={() => setActiveTab('OPTIONS')} className={`flex-1 py-4 font-bold text-sm transition-colors ${activeTab === 'OPTIONS' ? 'bg-red-50 text-red-700 border-b-2 border-red-600' : 'text-gray-500 hover:bg-gray-50'}`}>
-              ⚠️ Incomplete Options ({badQuestions.length})
+        {/* ========================================== */}
+        {/* TABS NAVIGATION (MODERN PILLS)             */}
+        {/* ========================================== */}
+        <div className="flex bg-white shadow-md rounded-2xl p-1.5 gap-1 border border-[#e5e7eb] flex-col md:flex-row overflow-hidden">
+           <button onClick={() => setActiveTab('OPTIONS')} className={`flex-1 py-4 px-2 rounded-xl font-black text-[11px] md:text-xs tracking-widest uppercase transition-all whitespace-nowrap ${activeTab === 'OPTIONS' ? 'bg-[#002561] text-white shadow-md' : 'text-[#6b7280] hover:bg-[#f3f4f6]'}`}>
+              ⚠️ Incomplete Options <span className={`ml-1 px-2 py-0.5 rounded-full text-[10px] ${activeTab === 'OPTIONS' ? 'bg-white/20' : 'bg-gray-200'}`}>{badQuestions.length}</span>
            </button>
-           <button onClick={() => setActiveTab('DUPLICATES')} className={`flex-1 py-4 font-bold text-sm transition-colors ${activeTab === 'DUPLICATES' ? 'bg-red-50 text-red-700 border-b-2 border-red-600' : 'text-gray-500 hover:bg-gray-50'}`}>
-              🗂️ Duplicate Questions ({duplicateGroups.length})
+           <button onClick={() => setActiveTab('DUPLICATES')} className={`flex-1 py-4 px-2 rounded-xl font-black text-[11px] md:text-xs tracking-widest uppercase transition-all whitespace-nowrap ${activeTab === 'DUPLICATES' ? 'bg-[#002561] text-white shadow-md' : 'text-[#6b7280] hover:bg-[#f3f4f6]'}`}>
+              🗂️ Duplicates <span className={`ml-1 px-2 py-0.5 rounded-full text-[10px] ${activeTab === 'DUPLICATES' ? 'bg-white/20' : 'bg-gray-200'}`}>{duplicateGroups.length}</span>
            </button>
-           <button onClick={() => setActiveTab('LANGUAGE')} className={`flex-1 py-4 font-bold text-sm transition-colors ${activeTab === 'LANGUAGE' ? 'bg-rose-50 text-rose-700 border-b-2 border-rose-600' : 'text-gray-500 hover:bg-gray-50'}`}>
-              🌐 Language Scanner ({languageIssues.length})
+           <button onClick={() => setActiveTab('LANGUAGE')} className={`flex-1 py-4 px-2 rounded-xl font-black text-[11px] md:text-xs tracking-widest uppercase transition-all whitespace-nowrap ${activeTab === 'LANGUAGE' ? 'bg-[#002561] text-white shadow-md' : 'text-[#6b7280] hover:bg-[#f3f4f6]'}`}>
+              🌐 Language Scan <span className={`ml-1 px-2 py-0.5 rounded-full text-[10px] ${activeTab === 'LANGUAGE' ? 'bg-white/20' : 'bg-gray-200'}`}>{languageIssues.length}</span>
            </button>
         </div>
 
+        {/* ========================================== */}
+        {/* LOADING STATE                              */}
+        {/* ========================================== */}
         {loading ? (
-          <div className="text-center p-10 font-bold text-gray-500 animate-pulse">Scanning Database Anomalies...</div>
+          <div className="flex flex-col items-center justify-center p-20">
+            <div className="w-16 h-16 border-4 border-[#009CB4] border-t-transparent rounded-full animate-spin mb-6"></div>
+            <div className="text-[#002561] font-black tracking-widest uppercase animate-pulse">Scanning Database Anomalies...</div>
+          </div>
         ) : (
-          <>
-            {/* KONTEN TAB 1: PILIHAN KURANG */}
+          <div className="space-y-6">
+            
+            {/* ========================================== */}
+            {/* KONTEN TAB 1: PILIHAN KURANG               */}
+            {/* ========================================== */}
             {activeTab === 'OPTIONS' && (
               badQuestions.length === 0 ? (
-                <div className="bg-white p-10 rounded-lg shadow text-center text-green-600 font-bold text-xl">🎉 System Healthy! All questions in this query have at least 4 options.</div>
+                <div className="bg-white p-16 rounded-3xl shadow-lg border border-[#e5e7eb] text-center flex flex-col items-center">
+                  <div className="w-20 h-20 bg-[#10b981]/10 rounded-full flex items-center justify-center text-4xl mb-4">🎉</div>
+                  <h3 className="text-[#10b981] font-black text-xl tracking-widest uppercase mb-2">System Healthy</h3>
+                  <p className="text-[#6b7280] font-medium">All questions in this query have at least 4 options.</p>
+                </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-6">
                   {badQuestions.map((q, index) => (
-                    <div key={q.id} className="bg-white p-6 rounded-lg shadow border-l-4 border-yellow-500">
-                      <div className="flex justify-between items-start mb-4">
-                        <h2 className="text-lg font-bold text-gray-800"><span className="text-gray-400 mr-2">#{index + 1}</span>{q.question_text}</h2>
-                        <span className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-500 font-bold">{q.type_of_ac} | {q.kategori} | {q.subject}</span>
+                    <div key={q.id} className="bg-white p-6 md:p-8 rounded-3xl shadow-lg border border-[#e5e7eb] relative overflow-hidden">
+                      <div className="absolute left-0 top-0 w-1.5 h-full bg-[#f59e0b]"></div>
+                      
+                      <div className="flex flex-col md:flex-row justify-between items-start mb-6 gap-4 pl-2">
+                        <h2 className="text-lg font-bold text-[#1f2937] leading-relaxed"><span className="text-[#009CB4] font-black mr-3">#{index + 1}</span>{q.question_text}</h2>
+                        <span className="text-[10px] font-black tracking-widest uppercase bg-[#f3f4f6] px-3 py-1.5 rounded-lg text-[#6b7280] border border-[#d1d5db] whitespace-nowrap">
+                          {q.type_of_ac} | {q.kategori}
+                        </span>
                       </div>
-                      <div className="bg-gray-50 p-3 rounded text-sm text-gray-600 mb-4 space-y-1">
-                        {q.options.map((opt: any) => (<div key={opt.id}>• {opt.option_text} {opt.is_correct && <span className="text-green-500 font-bold">(Correct Answer)</span>}</div>))}
+                      
+                      <div className="bg-[#f9fafb] p-4 rounded-2xl border border-[#e5e7eb] mb-6 space-y-2 ml-2">
+                        {q.options.map((opt: any) => (
+                          <div key={opt.id} className="flex items-start gap-2 text-sm text-[#4b5563]">
+                            <span className="text-[#009CB4] mt-0.5">•</span> 
+                            <span>{opt.option_text} {opt.is_correct && <span className="text-[#10b981] font-bold ml-2 bg-[#10b981]/10 px-2 py-0.5 rounded text-xs">(Correct Answer)</span>}</span>
+                          </div>
+                        ))}
                       </div>
-                      <div className="flex gap-2">
-                        <input type="text" placeholder="Enter the missing option..." value={newOptions[q.id] || ''} onChange={(e) => handleTextChange(q.id, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAddOption(q.id) }} className="flex-1 border border-gray-300 rounded p-2 focus:ring-2 focus:ring-blue-500 outline-none" />
-                        <button onClick={() => handleAddOption(q.id)} disabled={submittingId === q.id} className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2 rounded transition disabled:bg-gray-400">Save Option</button>
+                      
+                      <div className="flex flex-col md:flex-row gap-3 pl-2">
+                        <input 
+                          type="text" 
+                          placeholder="Type the missing option here..." 
+                          value={newOptions[q.id] || ''} 
+                          onChange={(e) => handleTextChange(q.id, e.target.value)} 
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleAddOption(q.id) }} 
+                          className="flex-1 bg-[#f9fafb] border border-[#e5e7eb] rounded-xl p-3 focus:ring-0 focus:border-[#009CB4] outline-none transition-all text-[#1f2937] text-sm shadow-inner" 
+                        />
+                        <button 
+                          onClick={() => handleAddOption(q.id)} 
+                          disabled={submittingId === q.id} 
+                          className="bg-[#002561] hover:bg-[#00102a] text-white font-black tracking-widest uppercase text-xs px-6 py-3 rounded-xl shadow-md transition-all disabled:bg-gray-400 whitespace-nowrap"
+                        >
+                          {submittingId === q.id ? 'Saving...' : '💾 Save Option'}
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -313,22 +359,30 @@ export default function FixQuestionsPage() {
               )
             )}
 
-            {/* KONTEN TAB 2: SOAL DUPLIKAT */}
+            {/* ========================================== */}
+            {/* KONTEN TAB 2: SOAL DUPLIKAT                */}
+            {/* ========================================== */}
             {activeTab === 'DUPLICATES' && (
               duplicateGroups.length === 0 ? (
-                <div className="bg-white p-10 rounded-lg shadow text-center text-green-600 font-bold text-xl">✨ Clean! No duplicate questions detected in this query.</div>
+                <div className="bg-white p-16 rounded-3xl shadow-lg border border-[#e5e7eb] text-center flex flex-col items-center">
+                  <div className="w-20 h-20 bg-[#10b981]/10 rounded-full flex items-center justify-center text-4xl mb-4">✨</div>
+                  <h3 className="text-[#10b981] font-black text-xl tracking-widest uppercase mb-2">Database Clean</h3>
+                  <p className="text-[#6b7280] font-medium">No duplicate questions detected in this query.</p>
+                </div>
               ) : (
-                <div className="space-y-6">
+                <div className="space-y-8">
+                  
                   {/* TOMBOL NUKLIR (GLOBAL) */}
-                  <div className="bg-red-50 border-l-4 border-red-600 p-6 rounded shadow flex flex-col md:flex-row justify-between items-center gap-4">
-                    <div>
-                      <h3 className="text-red-800 font-black text-lg">🚨 MASS ACTION (MASTER PURGE)</h3>
-                      <p className="text-red-700 text-sm mt-1">Detected <b>{duplicateGroups.length}</b> duplicate groups. This action will automatically retain 1 definitive version per group and purge the rest simultaneously.</p>
+                  <div className="bg-[#ef4444]/5 border-2 border-[#ef4444] p-6 md:p-8 rounded-3xl shadow-lg flex flex-col md:flex-row justify-between items-center gap-6 relative overflow-hidden">
+                    <div className="absolute -right-10 -bottom-10 text-9xl opacity-5 pointer-events-none">🚨</div>
+                    <div className="relative z-10">
+                      <h3 className="text-[#dc2626] font-black text-xl tracking-widest uppercase mb-2">Master Purge Action</h3>
+                      <p className="text-[#7f1d1d] text-sm font-medium">Detected <b>{duplicateGroups.length}</b> duplicate groups. This action will automatically retain 1 definitive version per group and purge the rest simultaneously.</p>
                     </div>
                     <button 
                       onClick={handleNukeAllDuplicates}
                       disabled={submittingId === 'nuke_all'}
-                      className="px-6 py-4 bg-red-700 hover:bg-red-800 text-white font-black uppercase tracking-wider rounded-lg shadow-lg flex-shrink-0 animate-pulse hover:animate-none transition-all disabled:bg-gray-400"
+                      className="w-full md:w-auto px-8 py-4 bg-gradient-to-r from-[#ef4444] to-[#dc2626] hover:from-[#dc2626] hover:to-[#b91c1c] text-white font-black uppercase tracking-[0.2em] text-sm rounded-xl shadow-[0_8px_20px_rgba(239,68,68,0.3)] flex-shrink-0 animate-pulse hover:animate-none transition-all disabled:bg-gray-400 disabled:shadow-none"
                     >
                       {submittingId === 'nuke_all' ? 'PURGING...' : '🧹 EXECUTE MASTER PURGE'}
                     </button>
@@ -336,31 +390,40 @@ export default function FixQuestionsPage() {
 
                   {/* DAFTAR PER KELOMPOK */}
                   {duplicateGroups.map((group, groupIndex) => (
-                    <div key={groupIndex} className="bg-white p-6 rounded-lg shadow border-l-4 border-gray-300 opacity-90">
-                      <div className="mb-4 pb-4 border-b border-gray-200 flex flex-col md:flex-row md:justify-between md:items-start gap-4">
+                    <div key={groupIndex} className="bg-white p-6 md:p-8 rounded-3xl shadow-lg border border-[#e5e7eb] relative">
+                      
+                      <div className="mb-6 pb-6 border-b border-[#f3f4f6] flex flex-col md:flex-row md:justify-between md:items-start gap-6">
                          <div>
-                           <span className="bg-gray-100 text-gray-800 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider mb-2 inline-block">Case #{groupIndex + 1} ({group.length} Duplicates)</span>
-                           <h2 className="text-lg font-bold text-gray-800 leading-relaxed">{group[0].question_text}</h2>
-                           <p className="text-sm text-gray-500 mt-1 font-bold">{group[0].type_of_ac} | {group[0].kategori}</p>
+                           <span className="bg-[#009CB4]/10 text-[#009CB4] border border-[#009CB4]/20 text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-widest mb-3 inline-block">Case #{groupIndex + 1} — {group.length} Duplicates</span>
+                           <h2 className="text-lg font-bold text-[#1f2937] leading-relaxed">{group[0].question_text}</h2>
+                           <p className="text-xs text-[#6b7280] mt-2 font-bold uppercase tracking-wider">{group[0].type_of_ac} | {group[0].kategori}</p>
                          </div>
-                         <button onClick={() => handleDeleteAllDuplicates(group)} disabled={submittingId !== null} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-bold rounded shadow transition flex-shrink-0 disabled:opacity-50">
-                           Purge This Group Only
+                         <button onClick={() => handleDeleteAllDuplicates(group)} disabled={submittingId !== null} className="w-full md:w-auto px-6 py-3 bg-[#f3f4f6] hover:bg-[#e5e7eb] text-[#4b5563] text-[10px] font-black tracking-widest uppercase rounded-xl shadow-sm transition flex-shrink-0 disabled:opacity-50">
+                           Purge This Group
                          </button>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                         {group.map((q: any, i: number) => (
-                          <div key={q.id} className={`border p-4 rounded relative flex flex-col justify-between ${i === 0 ? 'bg-green-50 border-green-300' : 'bg-gray-50 border-gray-200'}`}>
+                          <div key={q.id} className={`border-2 p-5 rounded-2xl relative flex flex-col justify-between transition-all ${i === 0 ? 'bg-[#10b981]/5 border-[#10b981] shadow-sm' : 'bg-[#f9fafb] border-[#e5e7eb]'}`}>
                             <div>
-                              <span className={`absolute -top-3 -left-3 text-white w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold ${i === 0 ? 'bg-green-600' : 'bg-gray-800'}`}>{i+1}</span>
-                              {i === 0 && <span className="absolute top-2 right-2 text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded">Retained Version</span>}
-                              <div className="text-xs text-gray-500 mb-2 font-mono mt-1">ID: {q.id.split('-')[0]}...</div>
-                              <div className="space-y-1 text-sm mb-4">
-                                {q.options.map((opt: any) => (<div key={opt.id} className={opt.is_correct ? 'text-green-700 font-semibold' : 'text-gray-600'}>• {opt.option_text} {opt.is_correct && '✓'}</div>))}
+                              <span className={`absolute -top-3 -left-3 text-white w-7 h-7 flex items-center justify-center rounded-full text-xs font-black shadow-md ${i === 0 ? 'bg-[#10b981]' : 'bg-[#6b7280]'}`}>{i+1}</span>
+                              {i === 0 && <span className="absolute top-3 right-3 text-[9px] font-black tracking-widest uppercase text-[#10b981] bg-[#10b981]/10 px-2 py-1 rounded-md">Retained Version</span>}
+                              
+                              <div className="text-[10px] text-[#9ca3af] mb-3 font-mono font-bold mt-1">ID: {q.id.split('-')[0]}...</div>
+                              
+                              <div className="space-y-1.5 text-sm mb-6">
+                                {q.options.map((opt: any) => (
+                                  <div key={opt.id} className={`flex items-start gap-1.5 ${opt.is_correct ? 'text-[#10b981] font-bold' : 'text-[#6b7280]'}`}>
+                                    <span>•</span> 
+                                    <span>{opt.option_text} {opt.is_correct && '✓'}</span>
+                                  </div>
+                                ))}
                               </div>
                             </div>
-                            <button onClick={() => handleDeleteDuplicate(q.id)} disabled={submittingId !== null} className="w-full py-2 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded text-sm transition mt-2 disabled:bg-gray-200 disabled:text-gray-400">
-                               🗑️ Delete This Version
+                            
+                            <button onClick={() => handleDeleteDuplicate(q.id)} disabled={submittingId !== null} className="w-full py-2.5 bg-white border border-[#fca5a5] hover:bg-[#fef2f2] text-[#dc2626] font-black tracking-widest uppercase text-[10px] rounded-xl transition-all mt-auto disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200">
+                               🗑️ Delete Version
                             </button>
                           </div>
                         ))}
@@ -371,55 +434,69 @@ export default function FixQuestionsPage() {
               )
             )}
 
-            {/* KONTEN TAB 3: LANGUAGE SCANNER */}
+            {/* ========================================== */}
+            {/* KONTEN TAB 3: LANGUAGE SCANNER             */}
+            {/* ========================================== */}
             {activeTab === 'LANGUAGE' && (
               languageIssues.length === 0 ? (
-                <div className="bg-white p-10 rounded-lg shadow text-center text-green-600 font-bold text-xl">🎉 Database Bersih! Tidak ada Bahasa Indonesia yang terdeteksi.</div>
+                <div className="bg-white p-16 rounded-3xl shadow-lg border border-[#e5e7eb] text-center flex flex-col items-center">
+                  <div className="w-20 h-20 bg-[#10b981]/10 rounded-full flex items-center justify-center text-4xl mb-4">🎉</div>
+                  <h3 className="text-[#10b981] font-black text-xl tracking-widest uppercase mb-2">Language Clear</h3>
+                  <p className="text-[#6b7280] font-medium">No Indonesian language anomalies detected.</p>
+                </div>
               ) : (
-                <div className="space-y-4">
-                  <div className="bg-rose-50 border border-rose-200 p-4 rounded-lg flex items-center gap-3">
-                    <span className="text-2xl">🔍</span>
-                    <p className="text-rose-800 text-sm font-medium">
-                      Sistem mendeteksi <b>{languageIssues.length}</b> item (Soal/Opsi) yang terindikasi menggunakan Bahasa Indonesia berdasarkan pemindaian kata kunci.
+                <div className="space-y-6">
+                  
+                  <div className="bg-[#fffbeb] border border-[#fcd34d] p-5 rounded-2xl flex items-start md:items-center gap-4 shadow-sm">
+                    <span className="text-3xl">🔍</span>
+                    <p className="text-[#92400e] text-sm font-medium leading-relaxed">
+                      System detected <b>{languageIssues.length}</b> items (Questions/Options) indicating Indonesian usage based on keyword heuristics. Please provide English translations below.
                     </p>
                   </div>
 
                   {languageIssues.map((item, index) => (
-                    <div key={item.id} className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden flex flex-col md:flex-row">
+                    <div key={item.id} className="bg-white rounded-3xl shadow-lg border border-[#e5e7eb] overflow-hidden flex flex-col lg:flex-row">
                       
                       {/* Bagian Kiri: Info Original */}
-                      <div className="bg-gray-50 p-4 md:w-1/2 border-b md:border-b-0 md:border-r border-gray-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className={`text-[10px] font-bold px-2 py-1 rounded tracking-wider text-white ${item.type === 'QUESTION' ? 'bg-blue-600' : 'bg-orange-500'}`}>
+                      <div className="bg-[#f9fafb] p-6 lg:w-1/2 border-b lg:border-b-0 lg:border-r border-[#e5e7eb]">
+                        <div className="flex items-center justify-between mb-4">
+                          <span className={`text-[10px] font-black px-3 py-1.5 rounded-lg tracking-widest uppercase text-white shadow-sm ${item.type === 'QUESTION' ? 'bg-[#009CB4]' : 'bg-[#f59e0b]'}`}>
                             {item.type}
                           </span>
-                          <span className="text-xs text-gray-500 font-mono">#{index + 1}</span>
+                          <span className="text-xs text-[#9ca3af] font-black">#{index + 1}</span>
                         </div>
-                        <p className="text-xs text-gray-500 mb-1 font-bold">{item.parent_info}</p>
-                        <p className="text-sm font-medium text-gray-900 leading-relaxed bg-rose-100 p-3 rounded border border-rose-200 mt-2">
-                          {item.original_text}
-                        </p>
+                        <p className="text-[11px] text-[#6b7280] font-black tracking-wider uppercase mb-3 border-l-2 border-[#d1d5db] pl-2">{item.parent_info}</p>
+                        
+                        <div className="bg-white p-4 rounded-xl border border-[#e5e7eb] shadow-sm relative">
+                           <span className="absolute -top-2.5 right-4 bg-white px-2 text-[10px] font-black text-[#dc2626] uppercase tracking-widest">Original (ID)</span>
+                           <p className="text-sm font-medium text-[#1f2937] leading-relaxed">
+                             {item.original_text}
+                           </p>
+                        </div>
                       </div>
 
                       {/* Bagian Kanan: Form Translate */}
-                      <div className="p-4 md:w-1/2 flex flex-col justify-between bg-white relative">
+                      <div className="p-6 lg:w-1/2 flex flex-col justify-between bg-white">
                         <div>
-                          <label className="block text-xs font-bold text-green-700 mb-2">🇬🇧 English Translation:</label>
+                          <label className="block text-xs font-black text-[#002561] uppercase tracking-widest mb-3 flex items-center gap-2">
+                            <span>🇬🇧</span> English Translation
+                          </label>
                           <textarea 
-                            rows={3}
-                            className="w-full text-sm p-2 border border-green-300 rounded focus:ring-2 focus:ring-green-500 outline-none resize-none bg-green-50"
+                            rows={4}
+                            className="w-full text-sm p-4 border-2 border-[#e5e7eb] rounded-2xl focus:border-[#009CB4] outline-none resize-y bg-[#f9fafb] shadow-inner font-medium text-[#1f2937] placeholder-gray-400"
                             placeholder="Type the English translation here..."
                             value={translations[item.id] || ''}
                             onChange={(e) => handleTranslationChange(item.id, e.target.value)}
                           />
                         </div>
-                        <div className="mt-3 flex justify-end">
+                        
+                        <div className="mt-4 flex justify-end">
                           <button 
                             onClick={() => handleUpdateTranslation(item)}
                             disabled={submittingId === item.id || !translations[item.id]}
-                            className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded shadow transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            className="px-8 py-3 bg-[#002561] hover:bg-[#00102a] text-white text-[11px] font-black tracking-widest uppercase rounded-xl shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                           >
-                            {submittingId === item.id ? 'Saving...' : '💾 Save & Update'}
+                            {submittingId === item.id ? 'Updating...' : '💾 Update Text'}
                           </button>
                         </div>
                       </div>
@@ -430,7 +507,7 @@ export default function FixQuestionsPage() {
               )
             )}
 
-          </>
+          </div>
         )}
       </div>
     </div>

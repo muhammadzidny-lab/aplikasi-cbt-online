@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabaseClient' 
 import Link from 'next/link'
 
@@ -50,17 +50,38 @@ function DataRow({ label, value }: { label: string, value: string }) {
   )
 }
 
-function AdminSignaturePad({ value, onChange }: { value: string, onChange: (val: string) => void }) {
+// Dibungkus React.memo agar kebal dari efek Timer 1 Detik di komponen induk
+const AdminSignaturePad = React.memo(({ value, onChange }: { value: string, onChange: (val: string) => void }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [isDrawing, setIsDrawing] = useState(false)
+  const isDrawing = useRef(false)
+  const isInitialized = useRef(false)
+  const timeoutRef = useRef<any>(null) // Rahasia Debounce
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (canvas) {
       const ctx = canvas.getContext('2d')
-      if (ctx) { ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.strokeStyle = '#000000' }
+      if (ctx) { 
+         ctx.lineWidth = 3; 
+         ctx.lineCap = 'round'; 
+         ctx.lineJoin = 'round';
+         ctx.strokeStyle = '#002561'; 
+      }
     }
   }, [])
+
+  useEffect(() => {
+    if (value && !isInitialized.current && canvasRef.current) {
+       const canvas = canvasRef.current;
+       const ctx = canvas.getContext('2d');
+       const img = new window.Image(); 
+       img.onload = () => {
+          if (ctx) ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+       };
+       img.src = value;
+       isInitialized.current = true;
+    }
+  }, [value])
 
   const getCoordinates = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
@@ -78,44 +99,66 @@ function AdminSignaturePad({ value, onChange }: { value: string, onChange: (val:
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     const { x, y } = getCoordinates(e)
-    ctx.beginPath(); ctx.moveTo(x, y); setIsDrawing(true); canvas.setPointerCapture(e.pointerId)
+    ctx.beginPath(); 
+    ctx.moveTo(x, y); 
+    isDrawing.current = true; 
+    canvas.setPointerCapture(e.pointerId)
   }
 
   const draw = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return
+    if (!isDrawing.current) return
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    const { x, y } = getCoordinates(e)
-    ctx.lineTo(x, y); ctx.stroke()
+    
+    // Mendorong tinta ke performa tertinggi (Sinkron dengan Refresh Rate Monitor)
+    requestAnimationFrame(() => {
+       const { x, y } = getCoordinates(e)
+       ctx.lineTo(x, y); 
+       ctx.stroke()
+    })
   }
 
   const stopDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return
-    setIsDrawing(false)
+    if (!isDrawing.current) return
+    isDrawing.current = false
     const canvas = canvasRef.current
-    if (canvas) { canvas.releasePointerCapture(e.pointerId); onChange(canvas.toDataURL('image/png')) }
+    if (canvas) { 
+       canvas.releasePointerCapture(e.pointerId); 
+       
+       // TEKNIK DEBOUNCE: Hanya menyimpan saat Anda benar-benar selesai (jeda 500ms)
+       if (timeoutRef.current) clearTimeout(timeoutRef.current);
+       timeoutRef.current = setTimeout(() => {
+          onChange(canvas.toDataURL('image/png')) 
+       }, 500);
+    }
   }
 
   const clearSignature = () => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
-    if (ctx) { ctx.clearRect(0, 0, canvas.width, canvas.height); onChange('') }
+    if (ctx) { 
+       ctx.clearRect(0, 0, canvas.width, canvas.height); 
+       onChange('');
+       isInitialized.current = false;
+    }
   }
 
   return (
     <div className="relative">
-      <div className="border-2 border-dashed border-[#9ca3af] bg-[#ffffff] cursor-crosshair rounded-lg overflow-hidden">
-        <canvas ref={canvasRef} width={250} height={100} className="w-full h-24 touch-none"
+      <div className="border-2 border-dashed border-[#9ca3af] bg-[#ffffff] cursor-crosshair rounded-xl overflow-hidden shadow-inner">
+        <canvas ref={canvasRef} width={400} height={200} className="w-full h-36 touch-none"
           onPointerDown={startDrawing} onPointerMove={draw} onPointerUp={stopDrawing} onPointerOut={stopDrawing} />
-        {!value && <span className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-[#d1d5db] text-xs font-bold tracking-widest uppercase pointer-events-none">Sign Here</span>}
+        {!value && <span className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-[#d1d5db] text-xs font-black tracking-widest uppercase pointer-events-none">Sign Here</span>}
       </div>
-      <button type="button" onClick={clearSignature} className="text-[10px] font-bold tracking-widest uppercase text-[#ef4444] mt-1.5 hover:text-[#b91c1c]">Clear Signature</button>
+      <button type="button" onClick={clearSignature} className="text-[10px] font-black tracking-widest uppercase text-[#ef4444] mt-2 hover:text-[#b91c1c] flex items-center gap-1">
+        <span className="text-sm">🗑️</span> Clear Signature
+      </button>
     </div>
   )
-}
+}, (prevProps, nextProps) => prevProps.value === nextProps.value) // <--- Ini Tamengnya!
 
 // ==========================================
 // KOMPONEN UTAMA ADMIN
@@ -149,7 +192,22 @@ export default function AdminDashboard() {
   const [adminSignData, setAdminSignData] = useState({
     assessorName: '', assessorSign: '', inspectorName: '', inspectorSign: '', examiner1Sign: '', examiner2Sign: ''
   })
-
+// Fungsi baru untuk update state + simpan ke browser
+  const updateAdminSignData = (key: string, value: string) => {
+    setAdminSignData(prev => {
+      const newData = { ...prev, [key]: value }
+      localStorage.setItem('garuda_admin_signatures', JSON.stringify(newData))
+      return newData
+    })
+  }
+  // Menarik data tanda tangan yang tersimpan saat web dibuka
+  useEffect(() => {
+    const savedSignData = localStorage.getItem('garuda_admin_signatures')
+    if (savedSignData) {
+      setAdminSignData(JSON.parse(savedSignData))
+    }
+  }, [])
+  
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
   const [selectedLiveCam, setSelectedLiveCam] = useState<string | null>(null)
   const [liveFrames, setLiveFrames] = useState<Record<string, string>>({})
@@ -696,7 +754,7 @@ export default function AdminDashboard() {
         
         {/* PANEL KONTROL TANDA TANGAN ADMIN */}
         {showSignPanel && (
-          <div className="fixed top-0 left-0 h-full w-80 bg-[#ffffff] shadow-[20px_0_50px_rgba(0,0,0,0.5)] z-50 print-hidden flex flex-col border-r border-[#e5e7eb]">
+          <div className="fixed top-0 left-0 h-full w-[400px] bg-[#ffffff] shadow-[20px_0_50px_rgba(0,0,0,0.5)] z-50 print-hidden flex flex-col border-r border-[#e5e7eb]">
             <div className="bg-[#002561] text-white p-5 flex justify-between items-center shadow-md">
               <div>
                 <h2 className="font-black tracking-widest uppercase text-sm">Signatures</h2>
@@ -708,32 +766,32 @@ export default function AdminDashboard() {
             <div className="p-5 overflow-y-auto space-y-6 bg-[#f9fafb] flex-1">
               <div className="bg-[#ffffff] p-4 rounded-xl border border-[#e5e7eb] shadow-sm">
                 <label className="block text-[11px] font-bold text-[#002561] mb-1 uppercase tracking-wider">Assessor Name</label>
-                <input type="text" className="w-full text-sm p-2 border-2 border-[#e5e7eb] rounded-lg outline-none focus:border-[#009CB4] uppercase mb-3 transition" value={adminSignData.assessorName} onChange={(e) => setAdminSignData(prev => ({...prev, assessorName: e.target.value}))} />
+                <input type="text" className="w-full text-sm p-2 border-2 border-[#e5e7eb] rounded-lg outline-none focus:border-[#009CB4] uppercase mb-3 transition" value={adminSignData.assessorName} onChange={(e) => updateAdminSignData('assessorName', e.target.value)} />
                 <label className="block text-[11px] font-bold text-[#002561] mb-1 uppercase tracking-wider">Assessor Sign</label>
-                <AdminSignaturePad value={adminSignData.assessorSign} onChange={(val) => setAdminSignData(prev => ({...prev, assessorSign: val}))} />
+                <AdminSignaturePad value={adminSignData.assessorSign} onChange={(val) => updateAdminSignData('assessorSign', val)} />
               </div>
 
               <div className="bg-[#ffffff] p-4 rounded-xl border border-[#e5e7eb] shadow-sm">
                 <label className="block text-[11px] font-bold text-[#002561] mb-1 uppercase tracking-wider">Inspector Name</label>
-                <input type="text" className="w-full text-sm p-2 border-2 border-[#e5e7eb] rounded-lg outline-none focus:border-[#009CB4] uppercase mb-3 transition" value={adminSignData.inspectorName} onChange={(e) => setAdminSignData(prev => ({...prev, inspectorName: e.target.value}))} />
+                <input type="text" className="w-full text-sm p-2 border-2 border-[#e5e7eb] rounded-lg outline-none focus:border-[#009CB4] uppercase mb-3 transition" value={adminSignData.inspectorName} onChange={(e) => updateAdminSignData('inspectorName', e.target.value)} />
                 <label className="block text-[11px] font-bold text-[#002561] mb-1 uppercase tracking-wider">Inspector Sign</label>
-                <AdminSignaturePad value={adminSignData.inspectorSign} onChange={(val) => setAdminSignData(prev => ({...prev, inspectorSign: val}))} />
+                <AdminSignaturePad value={adminSignData.inspectorSign} onChange={(val) => updateAdminSignData('inspectorSign', val)} />
               </div>
               
               <div className="bg-[#ffffff] p-4 rounded-xl border border-[#e5e7eb] shadow-sm">
                 <label className="block text-[11px] font-bold text-[#002561] mb-1 uppercase tracking-wider">Examiner 1 Sign</label>
-                <AdminSignaturePad value={adminSignData.examiner1Sign} onChange={(val) => setAdminSignData(prev => ({...prev, examiner1Sign: val}))} />
+                <AdminSignaturePad value={adminSignData.examiner1Sign} onChange={(val) => updateAdminSignData('examiner1Sign', val)} />
               </div>
 
               <div className="bg-[#ffffff] p-4 rounded-xl border border-[#e5e7eb] shadow-sm">
                 <label className="block text-[11px] font-bold text-[#002561] mb-1 uppercase tracking-wider">Examiner 2 Sign</label>
-                <AdminSignaturePad value={adminSignData.examiner2Sign} onChange={(val) => setAdminSignData(prev => ({...prev, examiner2Sign: val}))} />
+                <AdminSignaturePad value={adminSignData.examiner2Sign} onChange={(val) => updateAdminSignData('examiner2Sign', val)} />
               </div>
             </div>
           </div>
         )}
 
-        <div className={`min-h-screen bg-[#111827] py-12 flex flex-col items-center gap-12 print:bg-[#ffffff] print:py-0 print:gap-0 print:block transition-all duration-300 ${showSignPanel ? 'ml-80' : ''}`}>
+        <div className={`min-h-screen bg-[#111827] py-12 flex flex-col items-center gap-12 print:bg-[#ffffff] print:py-0 print:gap-0 print:block transition-all duration-300 ${showSignPanel ? 'ml-[400px]' : ''}`}>
           
           <div className="fixed bottom-8 right-8 flex flex-col gap-3 print-hidden z-40">
             <button onClick={() => setShowSignPanel(true)} className="bg-[#d97706] text-white px-6 py-4 rounded-2xl shadow-[0_10px_20px_rgba(217,119,6,0.3)] font-black uppercase tracking-widest hover:bg-[#b45309] hover:scale-105 transition-all flex items-center justify-center gap-3">
@@ -1177,16 +1235,16 @@ export default function AdminDashboard() {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Link href="/admin/add-question" className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-sm border border-white/20 transition-all backdrop-blur-sm flex items-center gap-2">
-              <span>➕</span> Add Question
+              <span>➕</span> ADD QUESTION
             </Link>
             <Link href="/admin/fix" className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-sm border border-white/20 transition-all backdrop-blur-sm flex items-center gap-2">
-              <span>🛠️</span> DB Fix
+              <span>🛠️</span> DB FIX
             </Link>
             <button onClick={fetchData} className="px-5 py-2.5 bg-[#009CB4] hover:bg-[#007b8e] text-white rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(0,156,180,0.4)] transition-all flex items-center gap-2">
-              <span>🔄</span> Refresh
+              <span>🔄</span> REFRESH
             </button>
             <button onClick={handleLogout} className="px-5 py-2.5 bg-[#ef4444]/80 hover:bg-[#ef4444] text-white rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(220,38,38,0.4)] transition-all border border-[#ef4444]">
-              <span>🚪</span> Logout
+              <span>🚪</span> LOGOUT
             </button>
           </div>
         </div>
