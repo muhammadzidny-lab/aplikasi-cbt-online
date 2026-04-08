@@ -127,7 +127,7 @@ export default function AdminDashboard() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const SECRET_PIN = 'GARUDA2026'
 
-  // STATE MASTER GATE (PENGGANTI TOKEN)
+  // STATE MASTER GATE
   const [isMasterGateOpen, setIsMasterGateOpen] = useState(false)
   
   const [sessions, setSessions] = useState<any[]>([])
@@ -159,6 +159,18 @@ export default function AdminDashboard() {
   const pdfWrapperRef = useRef<HTMLDivElement>(null)
   const [autoSendTarget, setAutoSendTarget] = useState<string | null>(null)
   const [pdfCaptured, setPdfCaptured] = useState(false)
+
+  // ====================================================
+  // STATE BARU: SMART FILTER CONTROL PANEL
+  // ====================================================
+  const getLocalToday = () => {
+    const tzoffset = (new Date()).getTimezoneOffset() * 60000;
+    return (new Date(Date.now() - tzoffset)).toISOString().split('T')[0];
+  }
+  
+  const [searchTerm, setSearchTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState('ALL')
+  const [dateFilter, setDateFilter] = useState(getLocalToday()) // Default: Hari Ini
 
   useEffect(() => {
     setNow(Date.now()); 
@@ -280,8 +292,8 @@ export default function AdminDashboard() {
 
   // FUNGSI GHOST AUTO-SEND TABEL KE GMF
   const triggerAutoSendToGMF = async (sessionId: string) => {
-    const targetEmails = 'list-tqd@gmf-aeroasia.co.id, m.apriyansyah@gmf-aeroasia.co.id';
-    if(!window.confirm(`Kirim lembar PDF dokumen ini ke:\n- list-tqd@gmf-aeroasia.co.id\n- m.apriyansyah@gmf-aeroasia.co.id\n\n(Proses berjalan 3-5 detik di latar belakang).`)) return;
+    const targetEmails = 'list-tqd@gmf-aeroasia.co.id, m.apriyansyah@gmf-aeroasia.co.id, arik.yanwar@garuda-indonesia.com';
+    if(!window.confirm(`Send a PDF copy of this document to:\n- list-tqd@gmf-aeroasia.co.id\n- m.apriyansyah@gmf-aeroasia.co.id\n- arik.yanwar@garuda-indonesia.com\n\n(The process runs for 3-5 seconds in the background.).`)) return;
     setAutoSendTarget(targetEmails);
     setPdfCaptured(false);
     await handleViewResult(sessionId);
@@ -390,7 +402,7 @@ export default function AdminDashboard() {
 
   // FUNGSI MANUAL SENDER DARI DALAM KERTAS (Kalo View)
   const handleSendEmailWithAttachment = async () => {
-    const targetEmail = window.prompt("Masukkan alamat email tujuan (Tujuan Email Manual):", "list-tqd@gmf-aeroasia.co.id, m.apriyansyah@gmf-aeroasia.co.id");
+    const targetEmail = window.prompt("Enter the destination email address (Manual Email Destination):", "list-tqd@gmf-aeroasia.co.id, m.apriyansyah@gmf-aeroasia.co.id, arik.yanwar@garuda-indonesia.com");
     if (!targetEmail) return;
 
     setIsSendingEmail(true);
@@ -580,6 +592,73 @@ export default function AdminDashboard() {
       </div>
     )
   }
+
+  // ====================================================
+  // LOGIKA SMART FILTER & SORTING
+  // ====================================================
+  const filteredSessions = sessions.filter(session => {
+    const cand = session.candidates; 
+    const candName = (cand?.name || '').toLowerCase();
+    const candNo = (cand?.personnel_no || '').toLowerCase();
+    const searchLower = searchTerm.toLowerCase();
+
+    const matchesSearch = candName.includes(searchLower) || candNo.includes(searchLower);
+
+    const isPassed = session.final_passed !== null ? session.final_passed : (session.score >= 75);
+    let matchesStatus = true;
+    if (statusFilter === 'LIVE') matchesStatus = session.status !== 'COMPLETED';
+    if (statusFilter === 'PASSED') matchesStatus = session.status === 'COMPLETED' && isPassed;
+    if (statusFilter === 'FAILED') matchesStatus = session.status === 'COMPLETED' && !isPassed;
+
+    let matchesDate = true;
+    if (dateFilter && session.started_at) {
+       const localSessionDate = new Date(session.started_at);
+       const tzoffset = localSessionDate.getTimezoneOffset() * 60000;
+       const sessionDateStr = new Date(localSessionDate.getTime() - tzoffset).toISOString().split('T')[0];
+       matchesDate = sessionDateStr === dateFilter;
+    }
+
+    return matchesSearch && matchesStatus && matchesDate;
+  });
+
+  // TAMBAHAN: GROUPING & SORTING SESSIONS BERDASARKAN KANDIDAT & STATUS LIVE
+  const groupedSessionsArray = Object.values(filteredSessions.reduce((acc: any, session: any) => {
+    const candNo = session.candidates?.personnel_no || 'Unknown';
+    if (!acc[candNo]) {
+      acc[candNo] = {
+        candidate: session.candidates,
+        exams: []
+      };
+    }
+    acc[candNo].exams.push(session);
+    return acc;
+  }, {}));
+
+  // SORTING MESIN: Memaksa grup yang memiliki status LIVE (Sedang ujian) untuk tampil di urutan teratas
+  groupedSessionsArray.sort((a: any, b: any) => {
+    const aHasLive = a.exams.some((e: any) => e.status !== 'COMPLETED');
+    const bHasLive = b.exams.some((e: any) => e.status !== 'COMPLETED');
+
+    if (aHasLive && !bHasLive) return -1;
+    if (!aHasLive && bHasLive) return 1;
+
+    // Jika sama-sama LIVE (atau sama-sama selesai), urutkan berdasarkan ujian yang paling baru dimulai
+    const aLatest = Math.max(...a.exams.map((e: any) => new Date(e.started_at || 0).getTime()));
+    const bLatest = Math.max(...b.exams.map((e: any) => new Date(e.started_at || 0).getTime()));
+    
+    return bLatest - aLatest;
+  });
+
+  // Mengurutkan ujian di dalam masing-masing kandidat (LIVE paling atas)
+  groupedSessionsArray.forEach((group: any) => {
+    group.exams.sort((a: any, b: any) => {
+      if (a.status !== 'COMPLETED' && b.status === 'COMPLETED') return -1;
+      if (a.status === 'COMPLETED' && b.status !== 'COMPLETED') return 1;
+      return new Date(b.started_at || 0).getTime() - new Date(a.started_at || 0).getTime();
+    });
+  });
+
+  const groupedSessions = groupedSessionsArray;
 
   // ==========================================
   // RENDER 2: PDF VIEWER / PRINT MODE
@@ -966,7 +1045,7 @@ export default function AdminDashboard() {
                     <p className="font-bold">4. Passing grade score 75%</p>
                   </div>
                   {/* PERUBAHAN 2: h-14 diubah jadi h-12 agar seragam tebalnya */}
-                  <div className="w-1/3 border border-[#000000] h-18 relative flex justify-center items-center overflow-hidden">
+                  <div className="w-1/4 border border-[#000000] h-18 relative flex justify-center items-center overflow-hidden">
                     <span className="text-[10px] absolute top-1 left-1 z-10 text-[#374151] font-bold">Signature:</span>
                     {resCandidate?.signature && (<img src={resCandidate.signature} alt="Sign" className="h-full w-auto object-contain scale-[1.5] mix-blend-multiply" />)}
                   </div>
@@ -1149,50 +1228,107 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* CARD 2: LIVE PARTICIPANTS */}
+        {/* CARD 2: LIVE PARTICIPANTS WITH FILTER */}
         <div className="bg-[#ffffff] rounded-3xl shadow-2xl border border-[#e5e7eb] overflow-hidden flex flex-col">
-          <div className="p-6 md:p-8 border-b border-[#e5e7eb] bg-[#ffffff]">
-            <h2 className="text-xl font-black text-[#002561] tracking-wider uppercase flex items-center gap-3">
-              <span className="p-2 bg-blue-50 text-[#2563eb] rounded-lg text-lg">🧑‍✈️</span> Live Participants & Exam Results
-            </h2>
+          <div className="p-6 md:p-8 border-b border-[#e5e7eb] bg-[#ffffff] flex flex-col gap-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-black text-[#002561] tracking-wider uppercase flex items-center gap-3">
+                <span className="p-2 bg-blue-50 text-[#2563eb] rounded-lg text-lg">🧑‍✈️</span> Live Participants & Exam Results
+              </h2>
+              <span className="bg-[#f3f4f6] text-[#4b5563] px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest shadow-sm border border-[#d1d5db]">
+                {groupedSessions.length} CANDIDATES FOUND
+              </span>
+            </div>
+
+            {/* FILTER TOOLBAR */}
+            <div className="flex flex-col xl:flex-row gap-4 items-center justify-between bg-[#f9fafb] p-4 rounded-2xl border border-[#e5e7eb]">
+               {/* Search */}
+               <div className="relative w-full xl:w-auto flex-1 max-w-md">
+                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl">🔍</span>
+                 <input 
+                   type="text" 
+                   placeholder="Search Name or Pers No..." 
+                   value={searchTerm}
+                   onChange={(e) => setSearchTerm(e.target.value)}
+                   className="w-full pl-12 pr-4 py-3 rounded-xl border border-[#d1d5db] focus:outline-none focus:border-[#009CB4] text-sm font-bold text-[#002561] placeholder-gray-400 shadow-inner"
+                 />
+               </div>
+
+               <div className="flex flex-col md:flex-row items-center gap-4 w-full xl:w-auto">
+                 {/* Date Picker */}
+                 <div className="flex items-center gap-3 w-full md:w-auto bg-white border border-[#d1d5db] px-4 py-2 rounded-xl shadow-sm">
+                   <span className="text-lg">📅</span>
+                   <input 
+                     type="date" 
+                     value={dateFilter}
+                     onChange={(e) => setDateFilter(e.target.value)}
+                     className="focus:outline-none text-sm font-bold text-[#002561] uppercase cursor-pointer"
+                   />
+                   {dateFilter && (
+                     <button onClick={() => setDateFilter('')} className="text-[10px] bg-red-100 text-red-600 font-bold px-2 py-1 rounded-md hover:bg-red-200 transition-all uppercase tracking-wider">Clear</button>
+                   )}
+                 </div>
+
+                 {/* Status Pills */}
+                 <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
+                   {['ALL', 'LIVE', 'PASSED', 'FAILED'].map(status => (
+                     <button 
+                       key={status}
+                       onClick={() => setStatusFilter(status)}
+                       className={`px-5 py-2.5 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all whitespace-nowrap border-2 ${
+                         statusFilter === status 
+                           ? status === 'LIVE' ? 'bg-[#f59e0b] text-white border-[#f59e0b] shadow-[0_4px_10px_rgba(245,158,11,0.3)]'
+                           : status === 'PASSED' ? 'bg-[#10b981] text-white border-[#10b981] shadow-[0_4px_10px_rgba(16,185,129,0.3)]'
+                           : status === 'FAILED' ? 'bg-[#ef4444] text-white border-[#ef4444] shadow-[0_4px_10px_rgba(239,68,68,0.3)]'
+                           : 'bg-[#002561] text-white border-[#002561] shadow-[0_4px_10px_rgba(0,37,97,0.3)]'
+                           : 'bg-white border-[#e5e7eb] text-[#6b7280] hover:bg-gray-100'
+                       }`}
+                     >
+                       {status}
+                     </button>
+                   ))}
+                 </div>
+               </div>
+            </div>
           </div>
           
           <div className="overflow-x-auto w-full">
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="bg-[#f9fafb]/50 text-[#002561] border-b border-[#e5e7eb] text-xs uppercase tracking-wider font-bold">
                 <tr>
-                  <th className="p-5 pl-8">LIVE CCTV</th>
-                  <th className="p-5">Candidate</th>
-                  <th className="p-5">Module Detail</th>
-                  <th className="p-5">Exam Status / Violations</th>
-                  <th className="p-5">Result</th>
-                  <th className="p-5 text-center pr-8">Actions</th>
+                  <th className="p-5 pl-8 w-32">Photo / CCTV</th>
+                  <th className="p-5 w-64 border-r border-[#e5e7eb]">Candidate Info</th>
+                  <th className="p-5 pl-8">Exam Modules & Results</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#f9fafb]">
-                {sessions.length === 0 ? (
-                  <tr><td colSpan={6} className="p-8 text-center text-[#9ca3af] italic">No participants found.</td></tr>
-                ) : sessions.map((session) => {
-                  const cand = session.candidates; 
+              <tbody className="divide-y divide-[#e5e7eb]">
+                {groupedSessions.length === 0 ? (
+                  <tr><td colSpan={3} className="p-8 text-center text-[#9ca3af] font-medium tracking-wide">No participants match your search criteria.</td></tr>
+                ) : groupedSessions.map((group: any, index: number) => {
+                  
+                  // 1. DATA IDENTITAS (Diambil cukup 1 kali per orang)
+                  const cand = group.candidate; 
                   const candName = cand?.name || 'Unknown'; 
                   const candNo = cand?.personnel_no || 'N/A';
                   const candEmail = cand?.email || 'No Email'; 
                   const candUnit = cand?.unit || 'No Unit';
                   const candPhoto = cand?.photo || null; 
-                  const isPassed = session.final_passed !== null ? session.final_passed : (session.score >= 75);
-                  const warnings = session.cheat_warnings || 0;
-                  
-                  const liveSnapshot = liveFrames[session.id] || null;
+
+                  // Cek apakah ada ujian yang sedang "LIVE" untuk menampilkan CCTV
+                  const activeSession = group.exams.find((s: any) => s.status !== 'COMPLETED');
+                  const displayLiveCam = activeSession ? liveFrames[activeSession.id] : null;
 
                   return (
-                    <tr key={session.id} className="hover:bg-blue-50/30 transition-colors">
-                      <td className="p-5 pl-8 align-middle relative group">
-                        {session.status === 'COMPLETED' ? (
-                           (candPhoto ? <img src={candPhoto} onClick={() => setSelectedPhoto(candPhoto)} className="w-20 h-15 rounded-xl object-cover border-2 border-[#e5e7eb] opacity-50 cursor-pointer" /> : <div className="w-20 h-15 rounded-xl bg-[#f3f4f6] border border-[#e5e7eb] flex items-center justify-center text-[#9ca3af] font-bold">?</div>)
-                        ) : (
-                           (liveSnapshot ? (
-                              <div className="relative cursor-pointer hover:scale-105 transition-transform" onClick={() => setSelectedLiveCam(session.id)}>
-                                <img src={liveSnapshot} className="w-20 h-15 rounded-xl object-cover border-2 border-red-400 shadow-[0_0_10px_rgba(239,68,68,0.3)] bg-[#000000]" alt="Live Cam" />
+                    <tr key={index} className="hover:bg-blue-50/10 transition-colors">
+                      
+                      {/* ========================================== */}
+                      {/* KOLOM 1: CCTV ATAU FOTO STATIS             */}
+                      {/* ========================================== */}
+                      <td className="p-5 pl-8 align-top">
+                        {activeSession ? (
+                           (displayLiveCam ? (
+                              <div className="relative cursor-pointer hover:scale-105 transition-transform" onClick={() => setSelectedLiveCam(activeSession.id)}>
+                                <img src={displayLiveCam} className="w-20 h-15 rounded-xl object-cover border-2 border-red-400 shadow-[0_0_10px_rgba(239,68,68,0.3)] bg-[#000000]" alt="Live Cam" />
                                 <div className="absolute top-1 right-1 w-2.5 h-2.5 bg-[#ef4444] rounded-full animate-pulse border-2 border-[#ffffff] shadow-md"></div>
                                 <span className="absolute -bottom-2 -left-2 bg-[#dc2626] text-white text-[7px] font-black px-1.5 py-0.5 rounded tracking-widest shadow-md">LIVE</span>
                               </div>
@@ -1202,13 +1338,21 @@ export default function AdminDashboard() {
                                 <span className="text-[8px] animate-pulse">CAMERA</span>
                               </div>
                            ))
+                        ) : (
+                           (candPhoto ? <img src={candPhoto} onClick={() => setSelectedPhoto(candPhoto)} className="w-20 h-15 rounded-xl object-cover border-2 border-[#e5e7eb] opacity-80 cursor-pointer hover:opacity-100 transition-opacity" /> : <div className="w-20 h-15 rounded-xl bg-[#f3f4f6] border border-[#e5e7eb] flex items-center justify-center text-[#9ca3af] font-bold">?</div>)
                         )}
                       </td>
 
-                      <td className="p-5 align-middle">
+                      {/* ========================================== */}
+                      {/* KOLOM 2: NAMA & PERSONNEL NO               */}
+                      {/* ========================================== */}
+                      <td className="p-5 align-top border-r border-[#e5e7eb]">
                         <div className="flex flex-col">
-                          <span className="font-black uppercase text-[#002561]">
-                            {candName} <span className="text-[#009CB4] text-[10px] ml-1 tracking-widest px-1.5 py-0.5 bg-[#009CB4]/10 rounded border border-[#009CB4]/20">{candNo}</span>
+                          <span className="font-black uppercase text-[#002561] text-sm mb-1">
+                            {candName} 
+                          </span>
+                          <span className="text-[#009CB4] text-[10px] font-black tracking-widest px-2 py-0.5 bg-[#009CB4]/10 rounded border border-[#009CB4]/20 w-fit mb-1.5">
+                            ID: {candNo}
                           </span>
                           <span className="text-[11px] text-[#6b7280] font-medium">
                             {candEmail}
@@ -1219,90 +1363,104 @@ export default function AdminDashboard() {
                         </div>
                       </td>
                     
-                      <td className="p-5 align-middle">
-                        <div className="flex flex-col gap-1">
-                          <span className="font-bold text-[#1f2937] text-xs">
-                            {session.type_of_ac || '-'}
-                          </span>
-                          <span className="text-[10px] text-[#6b7280] font-medium uppercase">
-                            {session.kategori || '-'} • {session.subject} #{session.exam_no}
-                          </span>
-                        </div>
-                      </td>
-                      
-                      <td className="p-5 align-middle">
-                        <div className="flex flex-col items-start gap-2">
-                         {session.status === 'COMPLETED' ? (
-                            <>
-                              <div className="flex items-center gap-2">
-                                <span className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-md border border-emerald-200 text-[10px] font-bold uppercase tracking-widest">
-                                  Finished
-                                </span>
-                                <span className="font-black text-[#002561] text-xs">
-                                  Score: {session.score}
-                                </span>
-                              </div>
-                              <span className="text-[10px] font-bold text-[#9ca3af]">
-                                Time: 00:00
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <div className="flex items-center gap-2">
-                                <span className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 rounded-md border border-amber-200 text-[10px] font-bold uppercase tracking-widest animate-pulse">
-                                  <span className="w-2 h-2 inline-block rounded-full bg-[#f59e0b]"></span> Progress
-                                </span>
-                                <span className="font-bold text-[#6b7280] text-xs">
-                                  Score: {session.score}
-                                </span>
-                              </div>
-                              <span className="text-[10px] font-bold text-[#2563eb] flex items-center gap-1">
-                                <span className="text-sm">⏳</span> {getRemainingTime(session.started_at)} remaining
-                              </span>
-                            </>
-                          )}
-                          {(warnings > 0) && (
-                            <span className="px-2 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded text-[10px] font-bold tracking-wider flex items-center gap-1 shadow-sm animate-pulse">
-                              ⚠️ Violations: {warnings}/5
-                            </span>
-                          )}
-                        </div>
-                      </td>
+                      {/* ========================================== */}
+                      {/* KOLOM 3: DAFTAR UJIAN (BISA LEBIH DARI 1)  */}
+                      {/* ========================================== */}
+                      <td className="p-0 align-top">
+                        <div className="flex flex-col divide-y divide-[#f3f4f6]">
+                          
+                          {/* LOOPING KEDUA: Memunculkan baris untuk setiap ujian yang diambil kandidat */}
+                          {group.exams.map((session: any) => {
+                             const isPassed = session.final_passed !== null ? session.final_passed : (session.score >= 75);
+                             const warnings = session.cheat_warnings || 0;
 
-                      <td className="p-5 align-middle">
-                        {session.status === 'COMPLETED' ? (
-                          <div className="flex items-center gap-2">
-                            <div className={`px-3 py-1 text-[11px] font-black tracking-widest uppercase rounded-md border shadow-sm ${isPassed ? 'bg-[#10b981] text-white border-[#059669]' : 'bg-[#ef4444] text-white border-[#dc2626]'}`}>
-                              {isPassed ? 'PASSED' : 'FAILED'}
-                            </div>
-                            {isPassed ? (
-                              <button onClick={() => handleAdjustResult(session.id, false)} title="Force Fail" className="p-1.5 text-[#9ca3af] hover:text-[#dc2626] transition-all">❌</button>
-                            ) : (
-                              <button onClick={() => handleAdjustResult(session.id, true)} title="Force Pass" className="p-1.5 text-[#9ca3af] hover:text-[#059669] transition-all">✓</button>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-[#d1d5db] font-bold">-</span>
-                        )}
-                      </td>
-                      <td className="p-5 pr-8 text-center align-middle">
-                        <div className="flex items-center justify-center gap-2">
-                          {session.status === 'COMPLETED' && (
-                            <>
-                              <button onClick={() => handleViewResult(session.id)} className="px-3 py-1.5 bg-[#002561] hover:bg-[#00102a] text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-md transition-all flex items-center gap-1.5 hover:scale-105">
-                                🖨️ View
-                              </button>
-                              <button onClick={() => handleSendEmail(session)} className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-all ${session.email_sent ? 'bg-[#f3f4f6] text-[#9ca3af]' : 'bg-[#ffffff] text-[#009CB4] border-[#009CB4] hover:bg-[#009CB4]/10'}`}>
-                                📧 Email
-                              </button>
-                              <button onClick={() => triggerAutoSendToGMF(session.id)} className="px-3 py-1.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-md transition-all flex items-center gap-1.5 hover:scale-105">
-                                📄 Email PDF
-                              </button>
-                            </>
-                          )}
-                          <button onClick={() => resetParticipant(session.id, candName)} title="Delete" className="p-1.5 text-[#d1d5db] hover:text-[#ef4444] transition-all">
-                            🗑️
-                          </button>
+                             return (
+                               <div key={session.id} className="flex flex-wrap xl:flex-nowrap items-center justify-between p-5 pl-8 hover:bg-white transition-colors gap-4">
+                                  
+                                  {/* BAGIAN A: INFO MODUL PESAWAT */}
+                                  <div className="w-full xl:w-1/3 flex flex-col gap-1">
+                                    <span className="font-bold text-[#1f2937] text-sm">
+                                      {session.type_of_ac || '-'}
+                                    </span>
+                                    <span className="text-[10px] text-[#6b7280] font-bold uppercase tracking-wider">
+                                      {session.kategori || '-'} • {session.subject} #{session.exam_no}
+                                    </span>
+                                  </div>
+                                  
+                                  {/* BAGIAN B: SCORE & STATUS PROGRESS */}
+                                  <div className="w-full xl:w-1/3 flex flex-col items-start gap-1.5">
+                                    {session.status === 'COMPLETED' ? (
+                                      <>
+                                        <div className="flex items-center gap-2">
+                                          <span className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded border border-emerald-200 text-[10px] font-black uppercase tracking-widest">
+                                            Finished
+                                          </span>
+                                          <span className="font-black text-[#002561] text-xs">Score: {session.score}</span>
+                                        </div>
+                                        <span className="text-[10px] font-bold text-[#9ca3af]">Time: 00:00</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <div className="flex items-center gap-2">
+                                          <span className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 rounded border border-amber-200 text-[10px] font-black uppercase tracking-widest animate-pulse">
+                                            <span className="w-2 h-2 inline-block rounded-full bg-[#f59e0b]"></span> Progress
+                                          </span>
+                                          <span className="font-bold text-[#6b7280] text-xs">Score: {session.score}</span>
+                                        </div>
+                                        <span className="text-[10px] font-bold text-[#2563eb] flex items-center gap-1">
+                                          <span className="text-sm">⏳</span> {getRemainingTime(session.started_at)} remaining
+                                        </span>
+                                      </>
+                                    )}
+                                    {(warnings > 0) && (
+                                      <span className="px-2 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded text-[9px] font-bold tracking-wider flex items-center gap-1 shadow-sm animate-pulse">
+                                        ⚠️ Violations: {warnings}/5
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* BAGIAN C: HASIL LULUS & TOMBOL AKSI */}
+                                  <div className="w-full xl:w-1/3 flex items-center justify-end gap-3">
+                                    
+                                    {session.status === 'COMPLETED' ? (
+                                      <div className="flex items-center gap-1 mr-2">
+                                        <div className={`px-3 py-1 text-[11px] font-black tracking-widest uppercase rounded border shadow-sm ${isPassed ? 'bg-[#10b981] text-white border-[#059669]' : 'bg-[#ef4444] text-white border-[#dc2626]'}`}>
+                                          {isPassed ? 'PASSED' : 'FAILED'}
+                                        </div>
+                                        {isPassed ? (
+                                          <button onClick={() => handleAdjustResult(session.id, false)} title="Force Fail" className="p-1 text-[#d1d5db] hover:text-[#dc2626] transition-colors">❌</button>
+                                        ) : (
+                                          <button onClick={() => handleAdjustResult(session.id, true)} title="Force Pass" className="p-1 text-[#d1d5db] hover:text-[#059669] transition-colors">✓</button>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <span className="text-[#d1d5db] font-bold mr-4">-</span>
+                                    )}
+
+                                    <div className="flex items-center gap-1.5">
+                                      {session.status === 'COMPLETED' && (
+                                        <>
+                                          <button onClick={() => handleViewResult(session.id)} title="View / Print Document" className="p-2 bg-[#002561] hover:bg-[#00102a] text-white rounded-lg shadow-md transition-transform hover:scale-105">
+                                            🖨️
+                                          </button>
+                                          <button onClick={() => handleSendEmail(session)} title="Send Email Notification" className={`p-2 rounded-lg border transition-all ${session.email_sent ? 'bg-[#f3f4f6] text-[#9ca3af] border-[#e5e7eb]' : 'bg-[#ffffff] text-[#009CB4] border-[#009CB4] hover:bg-[#009CB4]/10'}`}>
+                                            📧
+                                          </button>
+                                          <button onClick={() => triggerAutoSendToGMF(session.id)} title="Auto-Send PDF to GMF" className="p-2 bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-lg shadow-md transition-transform hover:scale-105">
+                                            📄
+                                          </button>
+                                        </>
+                                      )}
+                                      <button onClick={() => resetParticipant(session.id, candName)} title="Delete Exam" className="p-2 text-[#d1d5db] hover:text-[#ef4444] hover:bg-red-50 rounded-lg transition-colors ml-1">
+                                        🗑️
+                                      </button>
+                                    </div>
+
+                                  </div>
+                               </div>
+                             )
+                          })}
+
                         </div>
                       </td>
                     </tr>
