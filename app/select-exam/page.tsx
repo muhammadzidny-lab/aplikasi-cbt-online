@@ -42,21 +42,16 @@ function SelectExamContent() {
     }
     const candidateInternalId = candidateData.id
 
-    // 2. LOGIKA BARU: AUTO-GATE SYSTEM (Tanpa Access Code)
-    const { data: tokenData, error: tokenError } = await supabase
+    // 2. LOGIKA BARU: TERSAMBUNG KE SAKELAR "MASTER GATE" ADMIN
+    const { data: masterGateData, error: gateError } = await supabase
       .from('exam_tokens')
-      .select('*')
-      .eq('type_of_ac', typeOfAC)
-      .eq('kategori', kategori)
-      .eq('subject', subject)
-      .eq('exam_no', parseInt(examNo))
-      .eq('is_active', true) // Syarat mutlak: Harus berstatus OPEN di Admin
-      .order('id', { ascending: false })
-      .limit(1)
+      .select('is_active')
+      .eq('access_code', 'MASTER_GATE')
       .maybeSingle()
 
-    if (!tokenData) {
-      alert('🔒 THE EXAM IS NOT OPEN YET!\n\nThe exam session for this module has not been activated. Please wait for instructions from the Invigilator to begin.')
+    // Jika Master Gate tidak ditemukan atau statusnya ditutup (false)
+    if (!masterGateData || !masterGateData.is_active) {
+      alert('🔒 THE EXAM IS NOT OPEN YET!\n\nThe exam session has not been activated. Please wait for instructions from the Invigilator to begin.')
       setLoading(false)
       return
     }

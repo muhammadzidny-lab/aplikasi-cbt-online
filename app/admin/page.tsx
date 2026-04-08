@@ -127,7 +127,9 @@ export default function AdminDashboard() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const SECRET_PIN = 'GARUDA2026'
 
-  const [tokens, setTokens] = useState<any[]>([])
+  // STATE MASTER GATE (PENGGANTI TOKEN)
+  const [isMasterGateOpen, setIsMasterGateOpen] = useState(false)
+  
   const [sessions, setSessions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   
@@ -181,9 +183,13 @@ export default function AdminDashboard() {
 
   const fetchData = async () => {
     setLoading(true)
-    const { data: tokenData } = await supabase.from('exam_tokens').select('*')
-    if (tokenData) {
-      setTokens(tokenData.sort((a: any, b: any) => b.id - a.id))
+    
+    // FETCH STATUS MASTER GATE
+    const { data: gateData } = await supabase.from('exam_tokens').select('*').eq('access_code', 'MASTER_GATE').single()
+    if (gateData) {
+      setIsMasterGateOpen(gateData.is_active)
+    } else {
+      setIsMasterGateOpen(false)
     }
 
     const { data: sessionData } = await supabase
@@ -226,13 +232,30 @@ export default function AdminDashboard() {
     return `${m}m ${s < 10 ? '0' : ''}${s}s`;
   }
 
-  const toggleTokenActive = async (tokenId: string, currentStatus: boolean) => {
-    await supabase.from('exam_tokens').update({ is_active: !currentStatus }).eq('id', tokenId); fetchData()
-  }
+  // FUNGSI KENDALI MASTER GATE
+  const toggleMasterGate = async (turnOn: boolean) => {
+    const confirmMsg = turnOn 
+      ? "ARE YOU SURE YOU CAN OPEN THE EXAM GATE?\n\nAll participants will be able to log in and start the exam simultaneously." 
+      : "ARE YOU SURE TO CLOSE THE GATE?\n\nNo more participants can enter/start the exam.";
+    
+    if (!window.confirm(confirmMsg)) return;
 
-  const handleDeleteToken = async (tokenId: string, accessCode: string) => {
-    if (!window.confirm(`Yakin menghapus Code: ${accessCode}?`)) return
-    await supabase.from('exam_tokens').delete().eq('id', tokenId); fetchData() 
+    setLoading(true);
+    const { data: existing } = await supabase.from('exam_tokens').select('id').eq('access_code', 'MASTER_GATE').single();
+    
+    if (existing) {
+      await supabase.from('exam_tokens').update({ is_active: turnOn }).eq('access_code', 'MASTER_GATE');
+    } else {
+      await supabase.from('exam_tokens').insert([{
+        access_code: 'MASTER_GATE',
+        is_active: turnOn,
+        type_of_ac: 'GLOBAL',
+        kategori: 'GLOBAL',
+        subject: 'GLOBAL',
+        exam_no: 0
+      }]);
+    }
+    fetchData();
   }
 
   const resetParticipant = async (resultId: string, participantName: string) => {
@@ -258,13 +281,13 @@ export default function AdminDashboard() {
   // FUNGSI GHOST AUTO-SEND TABEL KE GMF
   const triggerAutoSendToGMF = async (sessionId: string) => {
     const targetEmails = 'list-tqd@gmf-aeroasia.co.id, m.apriyansyah@gmf-aeroasia.co.id';
-    if(!window.confirm(`Kirim lembar PDF dokumen ini ke:\n- list-tqd@gmf-aeroasia.co.id\n- m.apriyansyah@gmf-aeroasia.co.id\n\n(Proses akan berjalan di latar belakang).`)) return;
+    if(!window.confirm(`Kirim lembar PDF dokumen ini ke:\n- list-tqd@gmf-aeroasia.co.id\n- m.apriyansyah@gmf-aeroasia.co.id\n\n(Proses berjalan 3-5 detik di latar belakang).`)) return;
     setAutoSendTarget(targetEmails);
     setPdfCaptured(false);
     await handleViewResult(sessionId);
   }
 
-  // PENGAWAS GHOST RENDER DENGAN PENCEGAH BLANK PAGE 5 HALAMAN
+  // PENGAWAS GHOST RENDER (MENCEGAH BLANK PAGE 5 HALAMAN)
   useEffect(() => {
     if (autoSendTarget && viewingResultId && !resLoading && !pdfCaptured) {
       setPdfCaptured(true); 
@@ -276,20 +299,28 @@ export default function AdminDashboard() {
             const element = document.getElementById('auto-pdf-wrapper');
             if (!element) throw new Error("Document wrapper tidak ditemukan di layar.");
 
-            // TRIK LASER ANTI BLANK PAGE: 
-            // 1. Buang margin antar kertas
-            // 2. Buang ukuran w-full agar canvas hanya memotret pas di kertas 210mm
+            // TRIK SAKTI MENCEGAH BLANK PAGE:
+            // Buang margin antar kertas dan paksa tingginya murni 297mm
             const originalGap = element.style.gap;
-            element.style.gap = '0px';
+            element.style.setProperty('gap', '0px', 'important');
             element.classList.remove('items-center', 'w-full');
             element.style.width = '210mm';
 
-            const originalStyles: { mt: string, shadow: string }[] = [];
+            const originalStyles: any[] = [];
             for(let i = 0; i < element.children.length; i++) {
                 const child = element.children[i] as HTMLElement;
-                originalStyles.push({ mt: child.style.marginTop, shadow: child.style.boxShadow });
-                child.style.marginTop = '0px'; 
-                child.style.boxShadow = 'none';
+                originalStyles.push({ 
+                    mt: child.style.marginTop, 
+                    mb: child.style.marginBottom,
+                    shadow: child.style.boxShadow,
+                    height: child.style.height,
+                    hasPageBreak: child.classList.contains('page-break')
+                });
+                child.style.setProperty('margin-top', '0px', 'important'); 
+                child.style.setProperty('margin-bottom', '0px', 'important'); 
+                child.style.setProperty('box-shadow', 'none', 'important');
+                child.style.setProperty('height', '297mm', 'important'); // Paksa A4 sempurna
+                child.classList.remove('page-break'); // Matikan pemisah halaman bawaan
             }
 
             const html2pdf: any = await new Promise((resolve, reject) => {
@@ -301,25 +332,30 @@ export default function AdminDashboard() {
                 document.body.appendChild(script);
             });
             
+            // KUNCI UTAMA: Kita hilangkan konfigurasi pagebreak dari html2pdf. 
+            // Karena ukuran kertas sudah diatur tepat 297mm, html2pdf akan otomatis 
+            // memotong setiap 297mm dengan sempurna tanpa menambah blank page.
             const opt = {
                 margin:       0,
                 filename:     `Exam_Result_${resCandidate?.name || 'Candidate'}.pdf`,
                 image:        { type: 'jpeg' as const, quality: 0.95 }, 
                 html2canvas:  { scale: 2, useCORS: true, logging: false, scrollY: 0 }, 
-                jsPDF:        { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const },
-                pagebreak:    { mode: ['css', 'legacy'], before: '.page-break' }
+                jsPDF:        { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
             };
 
             const pdfBase64 = await html2pdf().from(element).set(opt).outputPdf('datauristring');
 
-            // KEMBALIKAN SEMUA STYLE SEPERTI SEMULA AGAR LAYAR TIDAK RUSAK
+            // KEMBALIKAN STYLE KE ASAL AGAR TAMPILAN LAYAR TIDAK RUSAK
             element.style.gap = originalGap;
             element.classList.add('items-center', 'w-full');
             element.style.width = '';
             for(let i = 0; i < element.children.length; i++) {
                 const child = element.children[i] as HTMLElement;
                 child.style.marginTop = originalStyles[i].mt;
+                child.style.marginBottom = originalStyles[i].mb;
                 child.style.boxShadow = originalStyles[i].shadow;
+                child.style.height = originalStyles[i].height;
+                if(originalStyles[i].hasPageBreak) child.classList.add('page-break');
             }
 
             const response = await fetch('/api/send-result', {
@@ -352,7 +388,7 @@ export default function AdminDashboard() {
     }
   }, [autoSendTarget, viewingResultId, resLoading, resCandidate, pdfCaptured]);
 
-  // FUNGSI MANUAL SENDER (Tombol dalam preview)
+  // FUNGSI MANUAL SENDER DARI DALAM KERTAS (Kalo View)
   const handleSendEmailWithAttachment = async () => {
     const targetEmail = window.prompt("Masukkan alamat email tujuan (Tujuan Email Manual):", "list-tqd@gmf-aeroasia.co.id, m.apriyansyah@gmf-aeroasia.co.id");
     if (!targetEmail) return;
@@ -366,16 +402,25 @@ export default function AdminDashboard() {
         if (!element) throw new Error("Elemen PDF belum siap di layar. Silakan tunggu.");
 
         const originalGap = element.style.gap;
-        element.style.gap = '0px';
+        element.style.setProperty('gap', '0px', 'important');
         element.classList.remove('items-center', 'w-full');
         element.style.width = '210mm';
 
-        const originalStyles: { mt: string, shadow: string }[] = [];
+        const originalStyles: any[] = [];
         for(let i = 0; i < element.children.length; i++) {
             const child = element.children[i] as HTMLElement;
-            originalStyles.push({ mt: child.style.marginTop, shadow: child.style.boxShadow });
-            child.style.marginTop = '0px'; 
-            child.style.boxShadow = 'none';
+            originalStyles.push({ 
+                mt: child.style.marginTop, 
+                mb: child.style.marginBottom,
+                shadow: child.style.boxShadow,
+                height: child.style.height,
+                hasPageBreak: child.classList.contains('page-break')
+            });
+            child.style.setProperty('margin-top', '0px', 'important'); 
+            child.style.setProperty('margin-bottom', '0px', 'important'); 
+            child.style.setProperty('box-shadow', 'none', 'important');
+            child.style.setProperty('height', '297mm', 'important'); 
+            child.classList.remove('page-break');
         }
 
         const html2pdf: any = await new Promise((resolve, reject) => {
@@ -392,8 +437,7 @@ export default function AdminDashboard() {
             filename:     `Exam_Result_${resCandidate?.name || 'Candidate'}.pdf`,
             image:        { type: 'jpeg' as const, quality: 0.95 },
             html2canvas:  { scale: 2, useCORS: true, logging: false, scrollY: 0 },
-            jsPDF:        { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const },
-            pagebreak:    { mode: ['css', 'legacy'], before: '.page-break' }
+            jsPDF:        { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
         };
 
         const pdfBase64 = await html2pdf().from(element).set(opt).outputPdf('datauristring');
@@ -404,7 +448,10 @@ export default function AdminDashboard() {
         for(let i = 0; i < element.children.length; i++) {
             const child = element.children[i] as HTMLElement;
             child.style.marginTop = originalStyles[i].mt;
+            child.style.marginBottom = originalStyles[i].mb;
             child.style.boxShadow = originalStyles[i].shadow;
+            child.style.height = originalStyles[i].height;
+            if(originalStyles[i].hasPageBreak) child.classList.add('page-break');
         }
 
         const response = await fetch('/api/send-result', {
@@ -430,34 +477,6 @@ export default function AdminDashboard() {
     } finally {
         setIsSendingEmail(false);
     }
-  }
-
-  const generateNewToken = async () => {
-    let acInput = window.prompt("Pilih Type of A/C:\n1. Airbus A330-Series\n2. Airbus A330 NEO\n3. B737-800 NG\n4. B737-MAX\n5. B777-300 ER\n\nKetik angka 1-5:", "1")
-    if (!acInput) return
-    let tokenTypeOfAC = acInput === "1" ? "Airbus A330-Series" : acInput === "2" ? "Airbus A330 NEO" : acInput === "3" ? "B737-800 NG" : acInput === "4" ? "B737-MAX" : acInput === "5" ? "B777-300 ER" : ""
-    if (!tokenTypeOfAC) return alert('GAGAL!')
-
-    let katInput = window.prompt("Pilih Kategori:\n1. Airframe & Powerplant\n2. Electric & Avionic\n\nKetik angka 1 atau 2:", "1")
-    if (!katInput) return
-    let tokenKategori = katInput === "1" ? "Airframe & Powerplant" : katInput === "2" ? "Electric & Avionic" : ""
-    if (!tokenKategori) return alert('GAGAL!')
-
-    let subjInput = window.prompt("Pilih Subject:\n1. RENEWAL\n2. INITIAL\n\nKetik angka 1 atau 2:", "1")
-    if (!subjInput) return
-    let tokenSubject = subjInput === "1" ? "RENEWAL" : subjInput === "2" ? "INITIAL" : ""
-    if (!tokenSubject) return alert('GAGAL!')
-    
-    let tokenExamNo = window.prompt("Ketik Nomor Exam (1, 2, atau 3):", "1")?.trim()
-    if (!tokenExamNo || !['1','2','3'].includes(tokenExamNo)) return alert('GAGAL!')
-
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-    let newCode = ''
-    for (let i = 0; i < 6; i++) newCode += chars.charAt(Math.floor(Math.random() * chars.length))
-
-    const { error } = await supabase.from('exam_tokens').insert([{ type_of_ac: tokenTypeOfAC, kategori: tokenKategori, subject: tokenSubject, exam_no: parseInt(tokenExamNo), access_code: newCode, is_active: true }])
-    if (error) alert('❌ GAGAL: ' + error.message)
-    else { alert(`✅ BERHASIL!\nKode: ${newCode}`); fetchData() }
   }
 
   const handleViewResult = async (resultId: string) => {
@@ -656,8 +675,8 @@ export default function AdminDashboard() {
           <div id="auto-pdf-wrapper" ref={pdfWrapperRef} className="flex flex-col items-center gap-12 print:gap-0 w-full text-[#000000]">
               
               {/* ================= PAGE 1 ================= */}
-              {/* PERUBAHAN: h-[297mm] diubah jadi h-[296mm] agar aman dari overflow */}
-              <div className="w-[210mm] h-[296mm] bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] p-[10mm] print:shadow-none print:w-full print:h-[296mm] print:p-[10mm] relative flex flex-col overflow-hidden">
+              {/* PERUBAHAN 1: px-[10mm] pt-[10mm] pb-[5mm] -> Memberi bantalan ekstra di bawah */}
+              <div className="w-[210mm] h-[297mm] bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] px-[10mm] pt-[10mm] pb-[5mm] print:shadow-none print:w-full print:h-[297mm] print:px-[10mm] print:pt-[10mm] print:pb-[5mm] relative flex flex-col overflow-hidden">
                 <div className="flex flex-col items-center justify-center mb-6">
                    <img src="/logo.png" alt="Garuda Indonesia" className="h-14 mb-2 object-contain" />
                    <div className="font-serif font-bold text-lg leading-tight">Garuda Indonesia</div>
@@ -717,7 +736,7 @@ export default function AdminDashboard() {
               </div>
               
               {/* ================= PAGE 2 ================= */}
-              <div className="w-[210mm] h-[296mm] bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] p-[10mm] print:shadow-none print:w-full print:h-[296mm] print:p-[10mm] relative flex flex-col overflow-hidden page-break mt-12 print:mt-0">
+              <div className="w-[210mm] h-[297mm] bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] px-[10mm] pt-[10mm] pb-[5mm] print:shadow-none print:w-full print:h-[297mm] print:px-[10mm] print:pt-[10mm] print:pb-[5mm] relative flex flex-col overflow-hidden page-break mt-12 print:mt-0">
                 <div className="flex items-start gap-4 mb-2 border-b-2 border-[#000000] pb-2">
                   <img src="/logo.png" alt="Logo" className="h-10 object-contain" />
                   <div>
@@ -785,8 +804,9 @@ export default function AdminDashboard() {
                     <p>3. Donot write anything on the booklet</p>
                     <p className="font-bold">4. Passing-grade 75%</p>
                   </div>
-                  <div className="w-1/3 border border-[#000000] h-16 relative flex justify-center items-center overflow-hidden">
-                    <span className="text-[9px] absolute top-1 left-1 z-10 text-[#374151] font-bold">Candidate Signature:</span>
+                  {/* PERUBAHAN 2: h-16 diubah jadi h-12 agar lebih tipis */}
+                  <div className="w-1/3 border border-[#000000] h-18 relative flex justify-center items-center overflow-hidden">
+                    <span className="text-[10px] absolute top-1 left-1 z-10 text-[#374151] font-bold">Signature:</span>
                     {resCandidate?.signature && (<img src={resCandidate.signature} alt="Sign" className="h-full w-auto object-contain scale-[1.5] mix-blend-multiply" />)}
                   </div>
                 </div>
@@ -799,7 +819,8 @@ export default function AdminDashboard() {
                         {Array.from({ length: 25 }).map((_, i) => {
                            const no = startIdx + i + 1; const userAns = resAnswerMap[no]
                            return (
-                             <div key={no} className="grid grid-cols-[20px_1fr_1fr_1fr_1fr] text-[10px] border-b border-[#d1d5db] h-5 items-center">
+                             // PERUBAHAN 3: h-[18px] mengurangi total tinggi soal sebanyak 50px (Diet Vertikal)
+                             <div key={no} className="grid grid-cols-[20px_1fr_1fr_1fr_1fr] text-[10px] border-b border-[#d1d5db] h-[23px] items-center">
                                 <div className="text-center font-bold border-r border-[#d1d5db]">{no}</div>
                                 {['A', 'B', 'C', 'D'].map((opt) => (
                                    <div key={opt} className="border-r last:border-r-0 border-[#d1d5db] relative flex justify-center items-center h-full">
@@ -813,7 +834,8 @@ export default function AdminDashboard() {
                    ))}
                 </div>
                 <div className="mt-2 text-[10px]">
-                   <div className="flex w-1/2 border border-[#000000] border-b-0 h-20">
+                   {/* PERUBAHAN 4: h-20 diubah jadi h-[60px] */}
+                   <div className="flex w-1/2 border border-[#000000] border-b-0 h-[70px]">
                      <div className="w-24 border-r border-[#000000] p-1 flex items-center justify-center font-bold text-xs">EXAMINER</div>
                      <div className="flex-1 border-r border-[#000000] relative p-1 flex items-center justify-center overflow-hidden">
                        <span className="absolute top-0 left-1 text-[9px] font-bold text-[#4b5563]">1</span>
@@ -824,7 +846,8 @@ export default function AdminDashboard() {
                        {adminSignData.examiner2Sign && <img src={adminSignData.examiner2Sign} className="h-full object-contain mix-blend-multiply scale-125" />}
                      </div>
                    </div>
-                   <div className="flex border border-[#000000] h-32">
+                   {/* PERUBAHAN 5: h-32 diubah jadi h-[90px] */}
+                   <div className="flex border border-[#000000] h-[100px]">
                      <div className="w-1/4 border-r border-[#000000] flex flex-col">
                        <div className="flex-1 border-b border-[#9ca3af] p-2 flex justify-between items-center">
                          <span>Aircraft system wrong :</span> <span className="font-bold text-lg">{resPrintStats.aircraftWrong}</span>
@@ -855,7 +878,7 @@ export default function AdminDashboard() {
               </div>
               
               {/* ================= PAGE 3: GMF STYLE ================= */}
-              <div className="w-[210mm] h-[296mm] bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] p-[10mm] print:shadow-none print:w-full print:h-[296mm] print:p-[10mm] relative flex flex-col overflow-hidden page-break mt-12 print:mt-0">
+              <div className="w-[210mm] h-[297mm] bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] px-[10mm] pt-[10mm] pb-[5mm] print:shadow-none print:w-full print:h-[297mm] print:px-[10mm] print:pt-[10mm] print:pb-[5mm] relative flex flex-col overflow-hidden page-break mt-12 print:mt-0">
                 <div className="flex items-end justify-between mb-4 border-b-2 border-[#000000] pb-2">
                    <div className="flex items-center gap-4">
                      <img src="/logo.png" alt="Logo" className="h-10 object-contain" />
@@ -942,8 +965,9 @@ export default function AdminDashboard() {
                     <p>3. Do not write anything on the booklet</p>
                     <p className="font-bold">4. Passing grade score 75%</p>
                   </div>
-                  <div className="w-1/4 border border-[#000000] h-14 relative flex justify-center items-center overflow-hidden">
-                    <span className="text-[9px] absolute top-1 left-1 z-10 text-[#374151] font-bold">Signature:</span>
+                  {/* PERUBAHAN 2: h-14 diubah jadi h-12 agar seragam tebalnya */}
+                  <div className="w-1/3 border border-[#000000] h-18 relative flex justify-center items-center overflow-hidden">
+                    <span className="text-[10px] absolute top-1 left-1 z-10 text-[#374151] font-bold">Signature:</span>
                     {resCandidate?.signature && (<img src={resCandidate.signature} alt="Sign" className="h-full w-auto object-contain scale-[1.5] mix-blend-multiply" />)}
                   </div>
                 </div>
@@ -957,7 +981,8 @@ export default function AdminDashboard() {
                         {Array.from({ length: 25 }).map((_, i) => {
                            const no = startIdx + i + 1; const userAns = resAnswerMap[no]
                            return (
-                             <div key={no} className="grid grid-cols-[20px_1fr_1fr_1fr_1fr] text-[10px] border-b border-[#d1d5db] h-5 items-center">
+                             // PERUBAHAN 3: h-[18px] Diet vertikal pada grid
+                             <div key={no} className="grid grid-cols-[20px_1fr_1fr_1fr_1fr] text-[10px] border-b border-[#d1d5db] h-[22px] items-center">
                                 <div className="text-center font-bold border-r border-[#d1d5db]">{no}</div>
                                 {['A', 'B', 'C', 'D'].map((opt) => (
                                    <div key={opt} className="border-r last:border-r-0 border-[#d1d5db] relative flex justify-center items-center h-full">
@@ -972,7 +997,8 @@ export default function AdminDashboard() {
                 </div>
                 
                 <div className="mt-2 text-[10px]">
-                   <div className="flex w-1/2 border border-[#000000] border-b-0 h-20">
+                   {/* PERUBAHAN 4: h-20 diubah jadi h-[60px] */}
+                   <div className="flex w-1/2 border border-[#000000] border-b-0 h-[80px]">
                      <div className="w-24 border-r border-[#000000] p-1 flex items-center justify-center font-bold text-xs">EXAMINER</div>
                      <div className="flex-1 border-r border-[#000000] relative p-1 flex items-center justify-center overflow-hidden">
                        <span className="absolute top-0 left-1 text-[9px] font-bold text-[#4b5563]">1</span>
@@ -983,7 +1009,8 @@ export default function AdminDashboard() {
                        {adminSignData.examiner2Sign && <img src={adminSignData.examiner2Sign} className="h-full object-contain mix-blend-multiply scale-125" />}
                      </div>
                    </div>
-                   <div className="flex border border-[#000000] h-32">
+                   {/* PERUBAHAN 5: h-40 diubah jadi h-[90px] */}
+                   <div className="flex border border-[#000000] h-[100px]">
                      <div className="w-1/4 border-r border-[#000000] flex flex-col">
                        <div className="flex-1 border-b border-[#9ca3af] p-2 flex justify-between items-center">
                          <span>Aircraft system wrong :</span> <span className="font-bold text-lg">{resPrintStats.aircraftWrong}</span>
@@ -1005,7 +1032,7 @@ export default function AdminDashboard() {
                        </div>
                      </div>
                      <div className="w-1/4 p-2 flex flex-col items-center justify-center">
-                       <span className="font-bold text-lg mb-1">SCORE :</span>
+                       <span className="font-bold text-lg mb-2">SCORE :</span>
                        <span className="font-bold text-4xl">{resPrintStats.score}</span>
                      </div>
                    </div>
@@ -1073,9 +1100,6 @@ export default function AdminDashboard() {
             <Link href="/admin/add-question" className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-sm border border-white/20 transition-all backdrop-blur-sm flex items-center gap-2">
               <span>➕</span> Add Question
             </Link>
-            <Link href="/admin/bulk-import" className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-sm border border-white/20 transition-all backdrop-blur-sm flex items-center gap-2">
-              <span>🚀</span> Bulk Import
-            </Link>
             <Link href="/admin/fix" className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-sm border border-white/20 transition-all backdrop-blur-sm flex items-center gap-2">
               <span>🛠️</span> DB Fix
             </Link>
@@ -1092,61 +1116,36 @@ export default function AdminDashboard() {
       {/* CONTENT CARDS */}
       <div className="max-w-7xl mx-auto px-4 md:px-12 -mt-12 space-y-10 relative z-20">
         
-        {/* CARD 1: EXAM ACCESS CODES */}
-        <div className="bg-[#ffffff] rounded-3xl shadow-2xl border border-[#e5e7eb] overflow-hidden flex flex-col">
-          <div className="p-6 md:p-8 border-b border-[#e5e7eb] bg-[#ffffff] flex justify-between items-center gap-4">
-            <h2 className="text-xl font-black text-[#002561] tracking-wider uppercase flex items-center gap-3">
-              <span className="p-2 bg-blue-50 text-[#2563eb] rounded-lg text-lg">🔑</span> Active Access Codes
-            </h2>
-            <button onClick={generateNewToken} className="px-6 py-3 bg-[#009CB4] text-white text-sm font-black tracking-widest uppercase rounded-xl shadow-lg transition-all hover:scale-[1.02]">
-              + Generate Code
-            </button>
-          </div>
-          <div className="overflow-x-auto w-full">
-            <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-[#f9fafb]/50 text-[#002561] border-b border-[#e5e7eb] text-xs uppercase tracking-wider font-bold">
-                <tr>
-                  <th className="p-5 pl-8">Aircraft Type</th>
-                  <th className="p-5">Category</th>
-                  <th className="p-5">Module</th>
-                  <th className="p-5">Access Code</th>
-                  <th className="p-5 text-center pr-8">Gate Control</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#f9fafb]">
-                {tokens.length === 0 ? (
-                  <tr><td colSpan={5} className="p-8 text-center text-[#9ca3af] italic">No access codes generated yet.</td></tr>
-                ) : tokens.map((token) => (
-                  <tr key={token.id} className="hover:bg-blue-50/30 transition-colors group">
-                    <td className="p-5 pl-8 font-black text-[#002561]">{token.type_of_ac || '-'}</td>
-                    <td className="p-5 text-[#4b5563] font-medium">{token.kategori || '-'}</td>
-                    <td className="p-5">
-                      <span className="px-3 py-1 bg-[#f3f4f6] text-[#4b5563] rounded-md font-bold text-xs border border-[#e5e7eb]">
-                        {token.subject} #{token.exam_no}
-                      </span>
-                    </td>
-                    <td className="p-5">
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono font-black tracking-[0.3em] text-lg text-[#009CB4] bg-[#009CB4]/10 px-4 py-1.5 rounded-lg border border-[#009CB4]/20">
-                          {token.access_code}
-                        </span>
-                        <button onClick={() => { navigator.clipboard.writeText(token.access_code); alert(`Tersalin!`) }} className="p-2 text-[#9ca3af] hover:text-[#009CB4] hover:bg-[#009CB4]/10 rounded-lg transition-all opacity-0 group-hover:opacity-100">
-                          📋
-                        </button>
-                      </div>
-                    </td>
-                    <td className="p-5 pr-8 text-center">
-                      <button onClick={() => toggleTokenActive(token.id, token.is_active)} className={`px-4 py-1.5 rounded-lg font-black text-[10px] tracking-widest uppercase w-24 border ${token.is_active ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
-                        {token.is_active ? '● OPEN' : '● CLOSED'}
-                      </button>
-                      <button onClick={() => handleDeleteToken(token.id, token.access_code)} className="p-1.5 text-red-300 hover:text-[#ef4444] transition-all ml-2">
-                        🗑️
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {/* CARD 1: MASTER EXAM GATE */}
+        <div className="bg-[#ffffff] rounded-3xl shadow-2xl border border-[#e5e7eb] overflow-hidden flex flex-col relative">
+          <div className="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-l from-gray-50 to-transparent opacity-50 pointer-events-none"></div>
+          <div className="p-8 md:p-10 flex flex-col md:flex-row justify-between items-center gap-8 relative z-10">
+            <div>
+              <h2 className="text-2xl font-black text-[#002561] tracking-wider uppercase flex items-center gap-3 mb-2">
+                <span className="p-3 bg-blue-50 text-[#2563eb] rounded-xl text-xl shadow-sm">🌐</span> Exam Gate
+              </h2>
+              <p className="text-[#6b7280] font-medium text-sm">Control universal access for all candidates</p>
+            </div>
+            
+            <div className="flex flex-col items-center">
+              <div className="flex items-center gap-4 bg-[#f3f4f6] p-2 rounded-2xl border border-[#e5e7eb]">
+                 <button 
+                    onClick={() => toggleMasterGate(false)}
+                    className={`px-8 py-4 rounded-xl font-black tracking-widest uppercase transition-all duration-300 ${!isMasterGateOpen ? 'bg-[#ef4444] text-white shadow-[0_10px_20px_rgba(239,68,68,0.3)] scale-105' : 'text-[#9ca3af] hover:bg-gray-200'}`}
+                 >
+                    🔒 CLOSED
+                 </button>
+                 <button 
+                    onClick={() => toggleMasterGate(true)}
+                    className={`px-8 py-4 rounded-xl font-black tracking-widest uppercase transition-all duration-300 ${isMasterGateOpen ? 'bg-[#10b981] text-white shadow-[0_10px_20px_rgba(16,185,129,0.3)] scale-105' : 'text-[#9ca3af] hover:bg-gray-200'}`}
+                 >
+                    🔓 OPEN ALL
+                 </button>
+              </div>
+              <p className={`mt-4 text-xs font-bold tracking-widest uppercase flex items-center gap-2 ${isMasterGateOpen ? 'text-[#10b981]' : 'text-[#ef4444]'}`}>
+                 {isMasterGateOpen ? <><span className="w-2 h-2 rounded-full bg-[#10b981] animate-pulse"></span> GATES ARE CURRENTLY OPEN</> : <><span className="w-2 h-2 rounded-full bg-[#ef4444]"></span> GATES ARE CURRENTLY CLOSED</>}
+              </p>
+            </div>
           </div>
         </div>
 
