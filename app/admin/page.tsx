@@ -219,6 +219,15 @@ export default function AdminDashboard() {
   const [pdfCaptured, setPdfCaptured] = useState(false)
 
   // ====================================================
+  // STATE BARU: BULK EMAIL PROCESSING
+  // ====================================================
+  const [selectedForBulk, setSelectedForBulk] = useState<string[]>([])
+  const [bulkQueue, setBulkQueue] = useState<string[]>([])
+  const [bulkCollected, setBulkCollected] = useState<{name: string, pdfBase64: string}[]>([])
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false)
+  const [bulkTargetEmail, setBulkTargetEmail] = useState<string | null>(null)
+
+  // ====================================================
   // STATE BARU: SMART FILTER CONTROL PANEL
   // ====================================================
   const getLocalToday = () => {
@@ -357,7 +366,154 @@ export default function AdminDashboard() {
     await handleViewResult(sessionId);
   }
 
-  // PENGAWAS GHOST RENDER (MENCEGAH BLANK PAGE 5 HALAMAN)
+  // ====================================================
+  // ALGORITMA BARU: BULK GHOST RENDER & SEND
+  // ====================================================
+  const startBulkSend = () => {
+    const targetEmail = window.prompt(`You selected ${selectedForBulk.length} documents to be sent as attachments in ONE email.\n\nEnter destination email (separate multiple emails with commas):`, "list-tqd@gmf-aeroasia.co.id, m.apriyansyah@gmf-aeroasia.co.id, arik.yanwar@garuda-indonesia.com");
+    if (!targetEmail) return;
+
+    setBulkTargetEmail(targetEmail);
+    setBulkQueue([...selectedForBulk]);
+    setBulkCollected([]);
+    setIsBulkProcessing(true);
+  }
+
+const sendBulkBatchesToAPI = async () => {
+    setIsBulkProcessing(false); 
+    
+    // Pecah data per 5 file agar payload tidak raksasa (Bypass 413 Error)
+    const BATCH_SIZE = 5;
+    let successCount = 0;
+    let errorCount = 0;
+    let lastErrorDetail = "Tidak ada error API.";
+
+    for (let i = 0; i < bulkCollected.length; i += BATCH_SIZE) {
+        const batch = bulkCollected.slice(i, i + BATCH_SIZE);
+        try {
+            const response = await fetch('/api/send-bulk-result', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: bulkTargetEmail,
+                    attachments: batch 
+                })
+            });
+            if (response.ok) {
+                successCount += batch.length;
+            } else {
+                const data = await response.json();
+                lastErrorDetail = data.error || `HTTP Error ${response.status}`;
+                errorCount += batch.length;
+            }
+        } catch (err: any) {
+            lastErrorDetail = err.message;
+            errorCount += batch.length;
+        }
+    }
+
+    alert(`📊 HASIL BULK SEND:\n\n✅ Berhasil: ${successCount} PDF\n❌ Gagal: ${errorCount} PDF\n\n📌 PESAN ERROR:\n${lastErrorDetail}`);
+    setSelectedForBulk([]); 
+    setBulkCollected([]);
+    setBulkTargetEmail(null);
+  }
+
+  // LOOP MANAGER: MENGATUR ANTREAN RENDER
+  useEffect(() => {
+    if (isBulkProcessing && !viewingResultId) {
+        if (bulkQueue.length > 0) {
+            handleViewResult(bulkQueue[0]); 
+        } else if (bulkQueue.length === 0 && bulkCollected.length > 0) {
+            sendBulkBatchesToAPI(); 
+        }
+    }
+  }, [isBulkProcessing, viewingResultId, bulkQueue.length, bulkCollected.length]);
+
+  // GHOST RENDERER KHUSUS BULK
+  useEffect(() => {
+    if (isBulkProcessing && viewingResultId && !resLoading && !pdfCaptured) {
+        setPdfCaptured(true); 
+
+        const processBulkPdf = async () => {
+            try {
+                await new Promise(resolve => setTimeout(resolve, 2000)); 
+                const element = document.getElementById('auto-pdf-wrapper');
+                if (!element) throw new Error("Document wrapper tidak ditemukan di layar.");
+
+                const page2ToExclude = document.getElementById('pdf-page-2-exclude');
+                let page2OriginalDisplay = '';
+                if (page2ToExclude) {
+                    page2OriginalDisplay = page2ToExclude.style.display;
+                    page2ToExclude.style.setProperty('display', 'none', 'important');
+                }
+
+                const originalGap = element.style.gap;
+                element.style.setProperty('gap', '0px', 'important');
+                element.classList.remove('items-center', 'w-full');
+                element.style.width = '210mm';
+
+                const originalStyles: any[] = [];
+                for(let i = 0; i < element.children.length; i++) {
+                    const child = element.children[i] as HTMLElement;
+                    originalStyles.push({ 
+                        mt: child.style.marginTop, mb: child.style.marginBottom, shadow: child.style.boxShadow, height: child.style.height, hasPageBreak: child.classList.contains('page-break')
+                    });
+                    child.style.setProperty('margin-top', '0px', 'important'); 
+                    child.style.setProperty('margin-bottom', '0px', 'important'); 
+                    child.style.setProperty('box-shadow', 'none', 'important');
+                    child.style.setProperty('height', '296.5mm', 'important'); // 296.5mm FIX ANTI BLANK PAGE
+                    child.classList.remove('page-break'); 
+                }
+
+                const html2pdf: any = await new Promise((resolve) => {
+                    if ((window as any).html2pdf) return resolve((window as any).html2pdf);
+                    const script = document.createElement('script');
+                    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js';
+                    script.onload = () => resolve((window as any).html2pdf);
+                    document.body.appendChild(script);
+                });
+                
+                const opt = {
+                    margin:       0,
+                    filename:     `Exam_Result_${resCandidate?.name || 'Candidate'}.pdf`,
+                    image:        { type: 'jpeg' as const, quality: 0.95 }, 
+                    html2canvas:  { scale: 2, useCORS: true, logging: false, scrollY: 0 }, 
+                    jsPDF:        { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
+                };
+
+                const pdfBase64 = await html2pdf().from(element).set(opt).outputPdf('datauristring');
+
+                // SIMPAN KE MEMORI KOLEKTIF
+                setBulkCollected(prev => [...prev, { name: resCandidate?.name || 'Candidate', pdfBase64: pdfBase64 }]);
+
+                // KEMBALIKAN STYLE KE ASAL
+                if (page2ToExclude) page2ToExclude.style.display = page2OriginalDisplay;
+                element.style.gap = originalGap;
+                element.classList.add('items-center', 'w-full');
+                element.style.width = '';
+                for(let i = 0; i < element.children.length; i++) {
+                    const child = element.children[i] as HTMLElement;
+                    child.style.marginTop = originalStyles[i].mt;
+                    child.style.marginBottom = originalStyles[i].mb;
+                    child.style.boxShadow = originalStyles[i].shadow;
+                    child.style.height = originalStyles[i].height;
+                    if(originalStyles[i].hasPageBreak) child.classList.add('page-break');
+                }
+            } catch (error: any) {
+                console.error("Bulk PDF Error:", error);
+            } finally {
+                // LANJUT KE ID BERIKUTNYA
+                setViewingResultId(null); 
+                setPdfCaptured(false);
+                setBulkQueue(prev => prev.slice(1)); 
+            }
+        };
+        
+        processBulkPdf();
+    }
+  }, [isBulkProcessing, viewingResultId, resLoading, resCandidate, pdfCaptured]);
+
+  // PENGAWAS GHOST RENDER (MENCEGAH BLANK PAGE 5 HALAMAN) - SINGLE AUTO SEND
   useEffect(() => {
     if (autoSendTarget && viewingResultId && !resLoading && !pdfCaptured) {
       setPdfCaptured(true); 
@@ -368,6 +524,14 @@ export default function AdminDashboard() {
             
             const element = document.getElementById('auto-pdf-wrapper');
             if (!element) throw new Error("Document wrapper tidak ditemukan di layar.");
+
+            // ISOLASI HALAMAN 2 AGAR TIDAK TERKIRIM EMAIL (SESUAI REQUEST)
+            const page2ToExclude = document.getElementById('pdf-page-2-exclude');
+            let page2OriginalDisplay = '';
+            if (page2ToExclude) {
+                page2OriginalDisplay = page2ToExclude.style.display;
+                page2ToExclude.style.setProperty('display', 'none', 'important');
+            }
 
             // TRIK SAKTI MENCEGAH BLANK PAGE:
             // Buang margin antar kertas dan paksa tingginya murni 297mm
@@ -389,7 +553,7 @@ export default function AdminDashboard() {
                 child.style.setProperty('margin-top', '0px', 'important'); 
                 child.style.setProperty('margin-bottom', '0px', 'important'); 
                 child.style.setProperty('box-shadow', 'none', 'important');
-                child.style.setProperty('height', '297mm', 'important'); // Paksa A4 sempurna
+                child.style.setProperty('height', '296.5mm', 'important'); // 296.5mm FIX ANTI BLANK PAGE
                 child.classList.remove('page-break'); // Matikan pemisah halaman bawaan
             }
 
@@ -416,6 +580,9 @@ export default function AdminDashboard() {
             const pdfBase64 = await html2pdf().from(element).set(opt).outputPdf('datauristring');
 
             // KEMBALIKAN STYLE KE ASAL AGAR TAMPILAN LAYAR TIDAK RUSAK
+            if (page2ToExclude) {
+                page2ToExclude.style.display = page2OriginalDisplay;
+            }
             element.style.gap = originalGap;
             element.classList.add('items-center', 'w-full');
             element.style.width = '';
@@ -471,6 +638,14 @@ export default function AdminDashboard() {
         const element = document.getElementById('auto-pdf-wrapper');
         if (!element) throw new Error("Elemen PDF belum siap di layar. Silakan tunggu.");
 
+        // ISOLASI HALAMAN 2 AGAR TIDAK TERKIRIM EMAIL (SESUAI REQUEST)
+        const page2ToExclude = document.getElementById('pdf-page-2-exclude');
+        let page2OriginalDisplay = '';
+        if (page2ToExclude) {
+            page2OriginalDisplay = page2ToExclude.style.display;
+            page2ToExclude.style.setProperty('display', 'none', 'important');
+        }
+
         const originalGap = element.style.gap;
         element.style.setProperty('gap', '0px', 'important');
         element.classList.remove('items-center', 'w-full');
@@ -489,7 +664,7 @@ export default function AdminDashboard() {
             child.style.setProperty('margin-top', '0px', 'important'); 
             child.style.setProperty('margin-bottom', '0px', 'important'); 
             child.style.setProperty('box-shadow', 'none', 'important');
-            child.style.setProperty('height', '297mm', 'important'); 
+            child.style.setProperty('height', '296.5mm', 'important');  // 296.5mm FIX ANTI BLANK PAGE
             child.classList.remove('page-break');
         }
 
@@ -512,6 +687,9 @@ export default function AdminDashboard() {
 
         const pdfBase64 = await html2pdf().from(element).set(opt).outputPdf('datauristring');
 
+        if (page2ToExclude) {
+            page2ToExclude.style.display = page2OriginalDisplay;
+        }
         element.style.gap = originalGap;
         element.classList.add('items-center', 'w-full');
         element.style.width = '';
@@ -742,6 +920,18 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* HAMBARAN LOADING BULK SEND (KUNING) */}
+        {isBulkProcessing && (
+          <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#111827]/95 backdrop-blur-md text-white">
+             <div className="w-24 h-24 border-8 border-t-[#f59e0b] border-[#374151] rounded-full animate-spin mb-8 shadow-[0_0_20px_rgba(245,158,11,0.5)]"></div>
+             <h2 className="text-3xl font-black tracking-widest uppercase mb-3 text-[#f59e0b] animate-pulse">Bulk Processing...</h2>
+             <p className="text-lg font-bold bg-[#1f2937] px-6 py-2 rounded-full border border-[#374151]">
+                Rendering <span className="text-[#f59e0b]">{bulkCollected.length + 1}</span> of <span className="text-[#10b981]">{selectedForBulk.length}</span> documents
+             </p>
+             <p className="text-xs text-[#9ca3af] mt-8">(Please wait. Do not close this window or change tabs)</p>
+          </div>
+        )}
+
         <style dangerouslySetInnerHTML={{ __html: `
           @media print {
             @page { size: A4; margin: 0; }
@@ -812,7 +1002,6 @@ export default function AdminDashboard() {
           <div id="auto-pdf-wrapper" ref={pdfWrapperRef} className="flex flex-col items-center gap-12 print:gap-0 w-full text-[#000000]">
               
               {/* ================= PAGE 1 ================= */}
-              {/* PERUBAHAN 1: px-[10mm] pt-[10mm] pb-[5mm] -> Memberi bantalan ekstra di bawah */}
               <div className="w-[210mm] h-[297mm] bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] px-[10mm] pt-[10mm] pb-[5mm] print:shadow-none print:w-full print:h-[297mm] print:px-[10mm] print:pt-[10mm] print:pb-[5mm] relative flex flex-col overflow-hidden">
                 <div className="flex flex-col items-center justify-center mb-6">
                    <img src="/logo.png" alt="Garuda Indonesia" className="h-14 mb-2 object-contain" />
@@ -850,7 +1039,9 @@ export default function AdminDashboard() {
                         {adminSignData.assessorSign && <img src={adminSignData.assessorSign} className="max-h-full object-contain mix-blend-multiply" />}
                       </div>
                       <div className="border-b border-[#000000] w-full mb-1"></div>
-                      <p className="font-bold text-sm tracking-widest uppercase">{adminSignData.assessorName ? adminSignData.assessorName : '(                             )'}</p> 
+                      <p className="font-bold text-sm tracking-widest uppercase">
+                      ( {adminSignData.assessorName ? adminSignData.assessorName : <>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</>} )
+                      </p>
                     </div>
                   </div>
                   <div className="p-4 bg-[#ffffff] min-h-[160px] flex flex-col justify-between">
@@ -859,7 +1050,7 @@ export default function AdminDashboard() {
                       <div className="mb-0"><span className="font-bold text-sm">Issued Auth No:</span><div className="border-b border-dotted border-[#9ca3af] w-full h-6"></div></div>
                     </div>
                     <div className="self-end w-64 text-center mt-2 flex flex-col items-center">
-                      <div className="text-left mb-0 text-sm mt-1 w-full">Jakarta : <span className="underline decoration-dotted">{formatDate(new Date())}</span></div>
+                      <div className="text-left mb-0 text-sm mt-1 w-full">Jakarta : <span className="underline decoration-dotted"></span></div>
                       <p className="text-xs mb-1 w-full text-center">Inspector Airworthiness Standard</p> 
                       <div className="h-16 w-full flex justify-center items-end mb-1">
                         {adminSignData.inspectorSign && <img src={adminSignData.inspectorSign} className="max-h-full object-contain mix-blend-multiply" />}
@@ -869,21 +1060,219 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                 </div>
-                <div className="flex justify-between text-[10px] font-mono mt-2 text-[#6b7280]"><span>Form MZ 1-17.1 (10-13)</span><span>1 of 3</span></div>
+                <div className="flex justify-between text-[10px] font-mono mt-2 text-[#6b7280]"><span>Form MZ 1-17.1 (10-13)</span><span>1 of 2</span></div>
+              </div>
+
+              {/* ================= PAGE 2: ASSESSMENT ITEMS (EXCLUDED DARI EMAIL) ================= */}
+              <div id="pdf-page-2-exclude" className="w-[210mm] h-[297mm] bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] px-[10mm] pt-[10mm] pb-[5mm] print:shadow-none print:w-full print:h-[297mm] print:px-[10mm] print:pt-[10mm] print:pb-[5mm] relative flex flex-col overflow-hidden page-break mt-12 print:mt-0">
+                <div className="flex flex-col items-center justify-center mb-4">
+                   <img src="/logo.png" alt="Garuda Indonesia" className="h-10 mb-1 object-contain" />
+                   <div className="font-serif font-bold text-sm leading-tight">Garuda Indonesia</div>
+                   <div className="text-[10px] uppercase tracking-widest text-[#374151] mb-2">Airworthiness Management</div>
+                   <h2 className="text-base font-bold uppercase underline decoration-2 underline-offset-4">RECURRENT PROGRAM/ ASSESMENT</h2>
+                </div>
+
+                <table className="w-full border-collapse border border-[#000000] text-xs">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="border border-[#000000] p-1.5 w-8 text-center font-bold">No</th>
+                      <th className="border border-[#000000] p-1.5 text-center font-bold">ITEM</th>
+                      <th className="border border-[#000000] p-1.5 w-12 text-center font-bold">PASS</th>
+                      <th className="border border-[#000000] p-1.5 w-12 text-center font-bold">FAIL</th>
+                      <th className="border border-[#000000] p-1.5 w-32 text-center font-bold">REMARK</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                     {/* ROW 1 */}
+                     <tr>
+                       <td className="border border-[#000000] p-2 text-center align-top font-bold text-sm">1</td>
+                       <td className="border border-[#000000] p-2 align-top text-xs">
+                         <div className="font-bold mb-1">GA Regulation/ TM/ Maintenance Program</div>
+                         <ol className="list-decimal pl-4 space-y-0.5 text-[10px]">
+                           <li>CASR Part 21 / 39 / 43 / 65 / 91 / 121 / 145</li>
+                           <li>Maintavi Format (Basic format / AOG / Component, etc)</li>
+                           <li>De-icing / Snow Removal Procedure</li>
+                           <li>Part Robbing Procedure</li>
+                           <li>HIL Issuing</li>
+                           <li>Dispatch Authorization Procedure, etc</li>
+                         </ol>
+                         <div className="border-b border-dotted border-gray-400 mt-5 w-3/4"></div>
+                       </td>
+                       <td className="border border-[#000000] p-0 text-center align-top">
+                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                         </div>
+                       </td>
+                       <td className="border border-[#000000] p-0 text-center align-top">
+                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                         </div>
+                       </td>
+                       <td className="border border-[#000000] p-1 align-top"><textarea className="w-full h-full min-h-[70px] resize-none outline-none bg-transparent text-[10px] p-1" placeholder="Type here..."></textarea></td>
+                     </tr>
+                     {/* ROW 2 */}
+                     <tr>
+                       <td className="border border-[#000000] p-2 text-center align-top font-bold text-sm">2</td>
+                       <td className="border border-[#000000] p-2 align-top text-xs">
+                         <div className="font-bold mb-1">Walk Around Inspection / Inspection Sheet</div>
+                         <ol className="list-decimal pl-4 space-y-0.5 text-[10px]">
+                           <li>Nose Section - Significant item - Finding</li>
+                           <li>Main Wheel Area - Significant item - Finding</li>
+                           <li>Engine Section - Significant item - Finding</li>
+                           <li>Wing Area - Significant item - Finding</li>
+                           <li>Tail Section - Significant item - Finding</li>
+                         </ol>
+                         <div className="border-b border-dotted border-gray-400 mt-5 w-3/4"></div>
+                       </td>
+                       <td className="border border-[#000000] p-0 text-center align-top">
+                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                         </div>
+                       </td>
+                       <td className="border border-[#000000] p-0 text-center align-top">
+                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                         </div>
+                       </td>
+                       <td className="border border-[#000000] p-1 align-top"><textarea className="w-full h-full min-h-[70px] resize-none outline-none bg-transparent text-[10px] p-1" placeholder="Type here..."></textarea></td>
+                     </tr>
+                     {/* ROW 3 */}
+                     <tr>
+                       <td className="border border-[#000000] p-2 text-center align-top font-bold text-sm">3</td>
+                       <td className="border border-[#000000] p-2 align-top text-xs">
+                         <div className="font-bold mb-1">Manual Reading / Paper work / AML</div>
+                         <ol className="list-decimal pl-4 space-y-0.5 text-[10px]">
+                           <li>DDG - For issuing HIL</li>
+                           <li>IPC - Effectivity P/N</li>
+                           <li>AML - Answering Pilot Report - Completion</li>
+                           <li>Aircraft Technical Publication</li>
+                         </ol>
+                         <div className="border-b border-dotted border-gray-400 mt-5 w-3/4"></div>
+                       </td>
+                       <td className="border border-[#000000] p-0 text-center align-top">
+                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                         </div>
+                       </td>
+                       <td className="border border-[#000000] p-0 text-center align-top">
+                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                         </div>
+                       </td>
+                       <td className="border border-[#000000] p-1 align-top"><textarea className="w-full h-full min-h-[70px] resize-none outline-none bg-transparent text-[10px] p-1" placeholder="Type here..."></textarea></td>
+                     </tr>
+                     {/* ROW 4 */}
+                     <tr>
+                       <td className="border border-[#000000] p-2 text-center align-top font-bold text-sm">4</td>
+                       <td className="border border-[#000000] p-2 align-top text-xs">
+                         <div className="font-bold mb-1">Aircraft Document</div>
+                         <ol className="list-decimal pl-4 space-y-0.5 text-[10px]">
+                           <li>A/C document - (Completeness)</li>
+                           <li>C of A, C of R - (Process- Original - A/C effectivity)</li>
+                           <li>Radio Permit - (Process)</li>
+                           <li>A/C Weighing - (Process)</li>
+                           <li>Compass card - (Process)</li>
+                         </ol>
+                         <div className="border-b border-dotted border-gray-400 mt-5 w-3/4"></div>
+                       </td>
+                       <td className="border border-[#000000] p-0 text-center align-top">
+                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                         </div>
+                       </td>
+                       <td className="border border-[#000000] p-0 text-center align-top">
+                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                         </div>
+                       </td>
+                       <td className="border border-[#000000] p-1 align-top"><textarea className="w-full h-full min-h-[70px] resize-none outline-none bg-transparent text-[10px] p-1" placeholder="Type here..."></textarea></td>
+                     </tr>
+                     {/* ROW 5 */}
+                     <tr>
+                       <td className="border border-[#000000] p-2 text-center align-top font-bold text-sm">5</td>
+                       <td className="border border-[#000000] p-2 align-top text-xs">
+                         <div className="font-bold mb-1">Aircraft System</div>
+                         <ol className="list-decimal pl-4 space-y-0.5 text-[10px]">
+                           <li>A/C system during walk around check</li>
+                           <li>A/C system procedure, system operational/ functional and trouble shooting per ATA Standard Chapter Number : ( ATA 5 - 12, 20 - 49, 51 - 57, 70 - 80)</li>
+                           <li>Audit & Surveillance System.</li>
+                           <li>A/C Modification, New Technologies, Alteration Status, Critical or Complex Inspection, installation/ adjustment, BITE process, and experience problem</li>
+                           <li>ETOPS, RVSM, AutoLand, RNP, EGPWS, CDLS.</li>
+                           <li>Engine Run Procedures</li>
+                         </ol>
+                         <div className="border-b border-dotted border-gray-400 mt-5 w-3/4"></div>
+                       </td>
+                       <td className="border border-[#000000] p-0 text-center align-top">
+                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                         </div>
+                       </td>
+                       <td className="border border-[#000000] p-0 text-center align-top">
+                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                         </div>
+                       </td>
+                       <td className="border border-[#000000] p-1 align-top"><textarea className="w-full h-full min-h-[110px] resize-none outline-none bg-transparent text-[10px] p-1" placeholder="Type here..."></textarea></td>
+                     </tr>
+                     {/* ROW 6 */}
+                     <tr>
+                       <td className="border border-[#000000] p-2 text-center align-top font-bold text-sm">6</td>
+                       <td className="border border-[#000000] p-2 align-top text-xs">
+                         <div className="font-bold mb-1">Personal Attitude and Human Factor</div>
+                         <div className="pl-4 space-y-0.5 text-[10px] flex flex-col">
+                           <span>a. Seeking Information (daya tangkap menerima pertanyaan)</span>
+                           <span>b. Analysis thinking (pengelolaan pertanyaan untuk memberi jawaban)</span>
+                           <span>c. Decision making (memutuskan jawaban yang benar).</span>
+                         </div>
+                       </td>
+                       <td className="border border-[#000000] p-0 text-center align-top">
+                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                         </div>
+                       </td>
+                       <td className="border border-[#000000] p-0 text-center align-top">
+                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                         </div>
+                       </td>
+                       <td className="border border-[#000000] p-1 align-top"><textarea className="w-full h-full min-h-[50px] resize-none outline-none bg-transparent text-[10px] p-1" placeholder="Type here..."></textarea></td>
+                     </tr>
+                  </tbody>
+                </table>
+                <div className="flex justify-between text-[10px] font-mono mt-8 text-[#6b7280]"><span>Form MZ 1-17.1 (10-13)</span><span>2 of 2</span></div>
               </div>
               
-              {/* ================= PAGE 2 ================= */}
+              {/* ================= PAGE 3 ================= */}
               <div className="w-[210mm] h-[297mm] bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] px-[10mm] pt-[10mm] pb-[5mm] print:shadow-none print:w-full print:h-[297mm] print:px-[10mm] print:pt-[10mm] print:pb-[5mm] relative flex flex-col overflow-hidden page-break mt-12 print:mt-0">
-                <div className="flex items-start gap-4 mb-2 border-b-2 border-[#000000] pb-2">
-                  <img src="/logo.png" alt="Logo" className="h-10 object-contain" />
-                  <div>
-                    <div className="font-bold text-sm">Garuda Indonesia</div>
-                    <div className="text-[10px] text-[#4b5563]">Airworthiness Management</div>
+                
+                {/* HEADER EXACT MATCH DENGAN GAMBAR REFERENSI */}
+                <div className="flex items-end w-full mb-4">
+                  {/* Kiri: Logo dan Teks (Rata Tengah dalam bloknya sendiri) */}
+                  <div className="flex flex-col items-center w-[40%] shrink-0">
+                    <img src="/logo.png" alt="Garuda Indonesia" className="h-11 mb-1 object-contain" />
+                    <div className="font-bold text-[15px] leading-tight text-black font-sans">Garuda Indonesia</div>
+                    <div className="text-[12px] italic text-black font-sans">Airworthiness Management</div>
                   </div>
-                  <div className="flex-1 text-center">
-                    <h1 className="text-xl font-bold uppercase tracking-wider mt-2">ANSWER SHEET</h1>
+                  
+                  {/* Kanan: Garis Hitam Tebal dan Judul Answer Sheet */}
+                  <div className="flex flex-col w-[60%] shrink-0 pb-1">
+                    <div className="w-full border-t-[3px] border-[#000000] mb-2"></div>
+                    <h1 className="text-2xl font-bold uppercase text-black ml-4 tracking-wide">ANSWER SHEET</h1>
                   </div>
                 </div>
+
                 <div className="border border-[#000000] text-xs">
                   <div className="flex border-b border-[#000000]">
                     <div className="w-1/2 border-r border-[#000000] p-1 flex items-center">
@@ -941,7 +1330,6 @@ export default function AdminDashboard() {
                     <p>3. Donot write anything on the booklet</p>
                     <p className="font-bold">4. Passing-grade 75%</p>
                   </div>
-                  {/* PERUBAHAN 2: h-16 diubah jadi h-12 agar lebih tipis */}
                   <div className="w-1/3 border border-[#000000] h-18 relative flex justify-center items-center overflow-hidden">
                     <span className="text-[10px] absolute top-1 left-1 z-10 text-[#374151] font-bold">Signature:</span>
                     {resCandidate?.signature && (<img src={resCandidate.signature} alt="Sign" className="h-full w-auto object-contain scale-[1.5] mix-blend-multiply" />)}
@@ -956,8 +1344,7 @@ export default function AdminDashboard() {
                         {Array.from({ length: 25 }).map((_, i) => {
                            const no = startIdx + i + 1; const userAns = resAnswerMap[no]
                            return (
-                             // PERUBAHAN 3: h-[18px] mengurangi total tinggi soal sebanyak 50px (Diet Vertikal)
-                             <div key={no} className="grid grid-cols-[20px_1fr_1fr_1fr_1fr] text-[10px] border-b border-[#d1d5db] h-[23px] items-center">
+                             <div key={no} className="grid grid-cols-[20px_1fr_1fr_1fr_1fr] text-[10px] border-b border-[#d1d5db] h-[21px] items-center">
                                 <div className="text-center font-bold border-r border-[#d1d5db]">{no}</div>
                                 {['A', 'B', 'C', 'D'].map((opt) => (
                                    <div key={opt} className="border-r last:border-r-0 border-[#d1d5db] relative flex justify-center items-center h-full">
@@ -971,7 +1358,6 @@ export default function AdminDashboard() {
                    ))}
                 </div>
                 <div className="mt-2 text-[10px]">
-                   {/* PERUBAHAN 4: h-20 diubah jadi h-[60px] */}
                    <div className="flex w-1/2 border border-[#000000] border-b-0 h-[70px]">
                      <div className="w-24 border-r border-[#000000] p-1 flex items-center justify-center font-bold text-xs">EXAMINER</div>
                      <div className="flex-1 border-r border-[#000000] relative p-1 flex items-center justify-center overflow-hidden">
@@ -983,7 +1369,6 @@ export default function AdminDashboard() {
                        {adminSignData.examiner2Sign && <img src={adminSignData.examiner2Sign} className="h-full object-contain mix-blend-multiply scale-125" />}
                      </div>
                    </div>
-                   {/* PERUBAHAN 5: h-32 diubah jadi h-[90px] */}
                    <div className="flex border border-[#000000] h-[100px]">
                      <div className="w-1/4 border-r border-[#000000] flex flex-col">
                        <div className="flex-1 border-b border-[#9ca3af] p-2 flex justify-between items-center">
@@ -1011,22 +1396,39 @@ export default function AdminDashboard() {
                      </div>
                    </div>
                 </div>
-                <div className="flex justify-between text-[9px] font-mono mt-2 text-[#6b7280]"><span>Form MZ-1-16.3(3-12)</span><span>2 of 3</span></div>
+                <div className="flex justify-between text-[9px] font-mono mt-2 text-[#6b7280]"><span>Form MZ-1-16.3(3-12)</span></div>
               </div>
-              
-              {/* ================= PAGE 3: GMF STYLE ================= */}
+
+              {/* ================= PAGE 4: GMF STYLE ================= */}
               <div className="w-[210mm] h-[297mm] bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] px-[10mm] pt-[10mm] pb-[5mm] print:shadow-none print:w-full print:h-[297mm] print:px-[10mm] print:pt-[10mm] print:pb-[5mm] relative flex flex-col overflow-hidden page-break mt-12 print:mt-0">
-                <div className="flex items-end justify-between mb-4 border-b-2 border-[#000000] pb-2">
-                   <div className="flex items-center gap-4">
-                     <img src="/logo.png" alt="Logo" className="h-10 object-contain" />
-                     <div className="flex flex-col">
-                       <div className="font-bold text-sm">GMF AeroAsia</div>
-                       <div className="text-[9px] italic text-[#374151]">(Garuda Indonesia Group)</div>
+                
+                {/* HEADER GMF EXACT MATCH DENGAN GAMBAR REFERENSI */}
+                <div className="flex w-full items-end mb-4">
+                   {/* Kiri: Logo GMF & Nama (Tanpa Garis Bawah) */}
+                   <div className="flex items-center gap-3 pr-4 shrink-0 pb-1">
+                     <img src="/logo.png" alt="GMF AeroAsia" className="h-9 object-contain" />
+                     <div className="flex flex-col justify-center">
+                       <div className="text-[17px] text-black font-sans tracking-wide leading-none">
+                         <span className="font-bold">GMF</span>AeroAsia
+                       </div>
+                       <div className="text-[6px] tracking-[0.2em] text-[#6b7280] mt-1 uppercase">
+                         Garuda Indonesia Group
+                       </div>
                      </div>
                    </div>
-                   <div className="text-center flex-1"><h1 className="text-xl font-bold uppercase tracking-wider mt-2">ANSWER SHEET</h1></div>
-                   <div className="text-[10px] italic">Quality Assurance & Safety</div>
+                   
+                   {/* Kanan: QA & Safety, Garis Hitam Tebal (Hanya di Kanan), Answer Sheet */}
+                   <div className="flex-1 flex flex-col">
+                     <div className="text-right text-[12px] italic text-black font-sans mb-1 leading-none pr-2">
+                       Quality Assurance & Safety
+                     </div>
+                     <div className="w-full border-t-[2px] border-[#000000]"></div>
+                     <div className="pt-1.5 text-center">
+                       <h1 className="text-[19px] font-sans font-bold text-black tracking-wide uppercase">ANSWER SHEET</h1>
+                     </div>
+                   </div>
                 </div>
+
                 <div className="border border-[#000000] text-xs">
                   <div className="flex border-b border-[#000000]">
                     <div className="w-1/2 border-r border-[#000000] p-1 flex items-center">
@@ -1102,7 +1504,6 @@ export default function AdminDashboard() {
                     <p>3. Do not write anything on the booklet</p>
                     <p className="font-bold">4. Passing grade score 75%</p>
                   </div>
-                  {/* PERUBAHAN 2: h-14 diubah jadi h-12 agar seragam tebalnya */}
                   <div className="w-1/4 border border-[#000000] h-18 relative flex justify-center items-center overflow-hidden">
                     <span className="text-[10px] absolute top-1 left-1 z-10 text-[#374151] font-bold">Signature:</span>
                     {resCandidate?.signature && (<img src={resCandidate.signature} alt="Sign" className="h-full w-auto object-contain scale-[1.5] mix-blend-multiply" />)}
@@ -1118,8 +1519,7 @@ export default function AdminDashboard() {
                         {Array.from({ length: 25 }).map((_, i) => {
                            const no = startIdx + i + 1; const userAns = resAnswerMap[no]
                            return (
-                             // PERUBAHAN 3: h-[18px] Diet vertikal pada grid
-                             <div key={no} className="grid grid-cols-[20px_1fr_1fr_1fr_1fr] text-[10px] border-b border-[#d1d5db] h-[22px] items-center">
+                             <div key={no} className="grid grid-cols-[20px_1fr_1fr_1fr_1fr] text-[10px] border-b border-[#d1d5db] h-[21px] items-center">
                                 <div className="text-center font-bold border-r border-[#d1d5db]">{no}</div>
                                 {['A', 'B', 'C', 'D'].map((opt) => (
                                    <div key={opt} className="border-r last:border-r-0 border-[#d1d5db] relative flex justify-center items-center h-full">
@@ -1134,7 +1534,6 @@ export default function AdminDashboard() {
                 </div>
                 
                 <div className="mt-2 text-[10px]">
-                   {/* PERUBAHAN 4: h-20 diubah jadi h-[60px] */}
                    <div className="flex w-1/2 border border-[#000000] border-b-0 h-[80px]">
                      <div className="w-24 border-r border-[#000000] p-1 flex items-center justify-center font-bold text-xs">EXAMINER</div>
                      <div className="flex-1 border-r border-[#000000] relative p-1 flex items-center justify-center overflow-hidden">
@@ -1146,7 +1545,6 @@ export default function AdminDashboard() {
                        {adminSignData.examiner2Sign && <img src={adminSignData.examiner2Sign} className="h-full object-contain mix-blend-multiply scale-125" />}
                      </div>
                    </div>
-                   {/* PERUBAHAN 5: h-40 diubah jadi h-[90px] */}
                    <div className="flex border border-[#000000] h-[100px]">
                      <div className="w-1/4 border-r border-[#000000] flex flex-col">
                        <div className="flex-1 border-b border-[#9ca3af] p-2 flex justify-between items-center">
@@ -1174,7 +1572,7 @@ export default function AdminDashboard() {
                      </div>
                    </div>
                 </div>
-                <div className="flex justify-between text-[9px] font-mono mt-2 text-[#6b7280]"><span>FORM GMF/Q-448</span><span>3 of 3</span></div>
+                <div className="flex justify-between text-[9px] font-mono mt-2 text-[#6b7280]"><span>FORM GMF/Q-448</span></div>
               </div>
           </div>
         </div>
@@ -1196,6 +1594,18 @@ export default function AdminDashboard() {
              <p className="text-[#009CB4] font-bold">Scanning PDF and routing silently to: <span className="text-white">{autoSendTarget}</span></p>
              <p className="text-xs text-[#9ca3af] mt-5">(Please do not close this window)</p>
           </div>
+      )}
+
+      {/* HAMBARAN LOADING BULK SEND (KUNING) */}
+      {isBulkProcessing && (
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#111827]/95 backdrop-blur-md text-white">
+           <div className="w-24 h-24 border-8 border-t-[#f59e0b] border-[#374151] rounded-full animate-spin mb-8 shadow-[0_0_20px_rgba(245,158,11,0.5)]"></div>
+           <h2 className="text-3xl font-black tracking-widest uppercase mb-3 text-[#f59e0b] animate-pulse">Bulk Processing...</h2>
+           <p className="text-lg font-bold bg-[#1f2937] px-6 py-2 rounded-full border border-[#374151]">
+              Rendering <span className="text-[#f59e0b]">{bulkCollected.length + 1}</span> of <span className="text-[#10b981]">{selectedForBulk.length}</span> documents
+           </p>
+           <p className="text-xs text-[#9ca3af] mt-8">(Please wait. Do not close this window or change tabs)</p>
+        </div>
       )}
 
       {/* MODAL FOTO STATIS (KLIK FOTO PROFIL BIASA) */}
@@ -1293,9 +1703,17 @@ export default function AdminDashboard() {
               <h2 className="text-xl font-black text-[#002561] tracking-wider uppercase flex items-center gap-3">
                 <span className="p-2 bg-blue-50 text-[#2563eb] rounded-lg text-lg">🧑‍✈️</span> Live Participants & Exam Results
               </h2>
-              <span className="bg-[#f3f4f6] text-[#4b5563] px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest shadow-sm border border-[#d1d5db]">
-                {groupedSessions.length} CANDIDATES FOUND
-              </span>
+              <div className="flex items-center">
+                <span className="bg-[#f3f4f6] text-[#4b5563] px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest shadow-sm border border-[#d1d5db]">
+                  {groupedSessions.length} CANDIDATES FOUND
+                </span>
+                {/* TOMBOL BULK SEND MUNCUL JIKA ADA YANG DICENTANG */}
+                {selectedForBulk.length > 0 && (
+                  <button onClick={startBulkSend} className="ml-4 px-5 py-1.5 bg-[#f59e0b] hover:bg-[#d97706] text-white rounded-full text-[10px] font-black tracking-widest shadow-[0_0_15px_rgba(245,158,11,0.4)] hover:scale-105 transition-all animate-bounce border border-[#fcd34d] flex items-center gap-2">
+                    <span className="text-sm">📨</span> BULK SEND ({selectedForBulk.length})
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* FILTER TOOLBAR */}
@@ -1498,6 +1916,19 @@ export default function AdminDashboard() {
                                     <div className="flex items-center gap-1.5">
                                       {session.status === 'COMPLETED' && (
                                         <>
+                                          {/* CHECKBOX BULK SELECT */}
+                                          <label className={`flex items-center gap-2 cursor-pointer mr-3 px-2 py-1.5 rounded-lg border transition-colors ${selectedForBulk.includes(session.id) ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'}`}>
+                                            <input 
+                                               type="checkbox" 
+                                               checked={selectedForBulk.includes(session.id)}
+                                               onChange={(e) => {
+                                                  if(e.target.checked) setSelectedForBulk(prev => [...prev, session.id]);
+                                                  else setSelectedForBulk(prev => prev.filter(id => id !== session.id));
+                                               }}
+                                               className="w-4 h-4 cursor-pointer accent-[#2563eb]"
+                                            />
+                                          </label>
+
                                           <button onClick={() => handleViewResult(session.id)} title="View / Print Document" className="p-2 bg-[#002561] hover:bg-[#00102a] text-white rounded-lg shadow-md transition-transform hover:scale-105">
                                             🖨️
                                           </button>

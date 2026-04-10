@@ -256,7 +256,7 @@ export default function Home() {
 
           {/* SECTION: DGAC LICENSE */}
           <div>
-            <h3 className="text-lg font-black text-[#002561] mb-5 border-l-4 border-[#8B5E34] pl-3 tracking-wide uppercase">DGAC License</h3>
+            <h3 className="text-lg font-black text-[#002561] mb-5 border-l-4 border-[#8B5E34] pl-3 tracking-wide uppercase">DGCA License</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-xs font-bold text-gray-500 tracking-wider mb-2 uppercase">AMEL No.</label>
