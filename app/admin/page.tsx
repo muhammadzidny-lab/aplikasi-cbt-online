@@ -271,9 +271,9 @@ export default function AdminDashboard() {
       setIsMasterGateOpen(false)
     }
 
-    const { data: sessionData } = await supabase
+  const { data: sessionData } = await supabase
       .from('exam_results')
-      .select(`id, type_of_ac, kategori, subject, exam_no, status, started_at, score, cheat_warnings, final_passed, email_sent, candidates (name, email, personnel_no, photo, signature, unit, rating_sought, exam_date, dgac_amel_no, dgac_rating, ga_auth_no, ga_rating)`)
+      .select(`id, type_of_ac, kategori, subject, exam_no, status, started_at, score, cheat_warnings, final_passed, email_sent, candidates (name, email, personnel_no, unit, rating_sought, exam_date, dgac_amel_no, dgac_rating, ga_auth_no, ga_rating)`)
       .order('started_at', { ascending: false })
 
     if (sessionData) setSessions(sessionData)
@@ -287,17 +287,6 @@ export default function AdminDashboard() {
     return () => clearInterval(interval)
   }, [isAuthenticated])
 
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    
-    const channel = supabase.channel('proctoring-room');
-    channel.on('broadcast', { event: 'camera-frame' }, (payload: any) => {
-       const { resultId, image } = payload.payload;
-       setLiveFrames((prev) => ({ ...prev, [resultId]: image }));
-    }).subscribe();
-
-    return () => { supabase.removeChannel(channel); }
-  }, [isAuthenticated])
 
   const getRemainingTime = (startedAt: string) => {
     if (!now) return '120m 00s';
@@ -1798,25 +1787,12 @@ const sendBulkBatchesToAPI = async () => {
                     <tr key={index} className="hover:bg-blue-50/10 transition-colors">
                       
                       {/* ========================================== */}
-                      {/* KOLOM 1: CCTV ATAU FOTO STATIS             */}
+                      {/* KOLOM 1: AVATAR PROFIL KANDIDAT            */}
                       {/* ========================================== */}
                       <td className="p-5 pl-8 align-top">
-                        {activeSession ? (
-                           (displayLiveCam ? (
-                              <div className="relative cursor-pointer hover:scale-105 transition-transform" onClick={() => setSelectedLiveCam(activeSession.id)}>
-                                <img src={displayLiveCam} className="w-20 h-15 rounded-xl object-cover border-2 border-red-400 shadow-[0_0_10px_rgba(239,68,68,0.3)] bg-[#000000]" alt="Live Cam" />
-                                <div className="absolute top-1 right-1 w-2.5 h-2.5 bg-[#ef4444] rounded-full animate-pulse border-2 border-[#ffffff] shadow-md"></div>
-                                <span className="absolute -bottom-2 -left-2 bg-[#dc2626] text-white text-[7px] font-black px-1.5 py-0.5 rounded tracking-widest shadow-md">LIVE</span>
-                              </div>
-                           ) : (
-                              <div className="w-20 h-15 rounded-xl bg-[#111827] border-2 border-[#374151] flex flex-col items-center justify-center text-[#6b7280] text-center p-1">
-                                <span className="text-[10px] font-bold">WAITING</span>
-                                <span className="text-[8px] animate-pulse">CAMERA</span>
-                              </div>
-                           ))
-                        ) : (
-                           (candPhoto ? <img src={candPhoto} onClick={() => setSelectedPhoto(candPhoto)} className="w-20 h-15 rounded-xl object-cover border-2 border-[#e5e7eb] opacity-80 cursor-pointer hover:opacity-100 transition-opacity" /> : <div className="w-20 h-15 rounded-xl bg-[#f3f4f6] border border-[#e5e7eb] flex items-center justify-center text-[#9ca3af] font-bold">?</div>)
-                        )}
+                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#f3f4f6] to-[#e5e7eb] border-2 border-[#d1d5db] flex items-center justify-center text-[#9ca3af] shadow-inner">
+                            <span className="text-2xl">👤</span>
+                        </div>
                       </td>
 
                       {/* ========================================== */}
