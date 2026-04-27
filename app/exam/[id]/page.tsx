@@ -66,7 +66,7 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
   const isUnloading = useRef(false) 
   const cheatTimeout = useRef<NodeJS.Timeout | null>(null)
   
-  const MAX_WARNINGS = 5
+  const MAX_WARNINGS = 99
 
   useEffect(() => {
     const savedWarnings = localStorage.getItem(`cheat_${examResultId}`)
@@ -87,7 +87,12 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
         router.push('/'); 
         return; 
       }
-      if (resultData.status === 'COMPLETED') { router.push(`/result/${examResultId}`); return }
+      
+      // =================================================================
+      // PERBAIKAN ALUR ROUTING: CEK STATUS COMPLETED DAN ESSAY
+      // =================================================================
+      if (resultData.status === 'COMPLETED') { router.push(`/result/${examResultId}`); return; }
+      if (resultData.status === 'ESSAY') { router.push(`/exam/${examResultId}/essay`); return; }
 
       setCandidateId(resultData.candidates?.personnel_no || 'UNKNOWN')
       setTypeOfAC(resultData.type_of_ac || 'Aircraft')
@@ -189,6 +194,7 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
           alert(`🚨 FATAL VIOLATION!\n\nYou have been detected leaving the exam area ${MAX_WARNINGS} times. The exam is forcibly terminated!`);
           setTimeout(() => { isSystemDialogActive.current = false; }, 500);
 
+          // Jika pelanggaran fatal, status langsung COMPLETED
           supabase.from('exam_results').update({ status: 'COMPLETED', finished_at: new Date().toISOString() }).eq('id', examResultId).then(() => {
             router.push(`/result/${examResultId}`);
           });
@@ -273,9 +279,14 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
       setTimeout(() => { isSystemDialogActive.current = false; }, 500);
     }
     setLoading(true)
-    await supabase.from('exam_results').update({ status: 'COMPLETED', finished_at: new Date().toISOString() }).eq('id', examResultId)
+    
+    // =================================================================
+    // PERBAIKAN ALUR ROUTING: SET STATUS MENJADI 'ESSAY'
+    // =================================================================
+    await supabase.from('exam_results').update({ status: 'ESSAY' }).eq('id', examResultId)
     localStorage.removeItem(`cheat_${examResultId}`)
-    router.push(`/result/${examResultId}`)
+    
+    router.push(`/exam/${examResultId}/essay`)
   }
 
   const formatTime = (seconds: number) => {

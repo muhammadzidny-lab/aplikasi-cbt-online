@@ -14,7 +14,7 @@ const results = [];
 // ==========================================
 // 2. NAMA FILE CSV
 // ==========================================
-const CSV_FILENAME = 'candidates_rows.csv';
+const CSV_FILENAME = 'exam_answers_rows.csv';
 
 console.log('⏳ Mulai membaca file CSV...');
 
@@ -41,14 +41,14 @@ fs.createReadStream(CSV_FILENAME)
     // 3. MESIN UPLOAD BERTAHAP (BATCHING)
     // ==========================================
     // Diatur 5 agar Base64 yang raksasa tidak kena "Payload Too Large"
-    const BATCH_SIZE = 5; 
+    const BATCH_SIZE = 1; 
     let successCount = 0;
     let errorCount = 0;
 
     for (let i = 0; i < results.length; i += BATCH_SIZE) {
       const batch = results.slice(i, i + BATCH_SIZE);
       
-      const { error } = await supabase.from('candidates').insert(batch);
+      const { error } = await supabase.from('exam_answers').insert(batch);
       
       if (error) {
         console.error(`❌ Error pada baris ${i + 1} - ${i + batch.length}:`, error.message);

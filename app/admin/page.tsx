@@ -160,6 +160,43 @@ const AdminSignaturePad = React.memo(({ value, onChange }: { value: string, onCh
   )
 }, (prevProps, nextProps) => prevProps.value === nextProps.value) // <--- Ini Tamengnya!
 
+// =======================================================================
+// KOMPONEN READ-ONLY ESSAY: TAMPILAN GAMBAR CORETAN
+// =======================================================================
+const StaticDrawPad = ({ value, className = "" }: { value: string, className?: string }) => {
+  if (!value || !value.startsWith('data:image')) return <div className={`absolute inset-0 z-20 ${className}`}></div>;
+  return (
+    <div className={`absolute inset-0 z-20 flex items-center justify-center pointer-events-none ${className}`}>
+      <img src={value} alt="Drawing" className="w-full h-full object-fill" />
+    </div>
+  );
+};
+
+const StaticCombGrid = ({ count, label, value = "", placeholders = [], rightBorder = true, flexVal }: any) => {
+  const safeValue = typeof value === 'string' ? value : "";
+  const chars = safeValue.split('').slice(0, count);
+  return (
+    <div className={`relative flex flex-col bg-white min-w-0 ${rightBorder ? 'border-r-[2px] border-black' : ''}`} style={flexVal ? { flex: flexVal } : {}}>
+      {label && <div className="text-[10px] text-center font-extrabold z-10 leading-none py-[3px] border-b-[2px] border-black text-black truncate">{label}</div>}
+      <div className="flex-1 flex w-full relative min-w-0">
+        <div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none">
+           {Array.from({length: count}).map((_, i) => (
+              <div key={`tick-${i}`} className={`flex-1 ${i < count - 1 ? 'border-r-[1.5px] border-black' : ''}`}></div>
+           ))}
+        </div>
+        <div className="absolute inset-0 flex pointer-events-none">
+           {Array.from({length: count}).map((_, i) => (
+              <div key={`char-${i}`} className={`flex-1 flex items-center justify-center font-mono ${placeholders.length ? 'text-[8px] tracking-tighter font-bold text-gray-400' : 'text-[12px] font-extrabold text-black uppercase'} z-10 overflow-hidden`}>
+                {placeholders.length ? placeholders[i] : (chars[i] || '')}
+              </div>
+           ))}
+        </div>
+        {placeholders.length > 0 && <StaticDrawPad value={safeValue} />}
+      </div>
+    </div>
+  )
+};
+
 // ==========================================
 // KOMPONEN UTAMA ADMIN
 // ==========================================
@@ -273,7 +310,7 @@ export default function AdminDashboard() {
 
   const { data: sessionData } = await supabase
       .from('exam_results')
-      .select(`id, type_of_ac, kategori, subject, exam_no, status, started_at, score, cheat_warnings, final_passed, email_sent, candidates (name, email, personnel_no, unit, rating_sought, exam_date, dgac_amel_no, dgac_rating, ga_auth_no, ga_rating)`)
+      .select(`id, type_of_ac, kategori, subject, exam_no, status, started_at, score, cheat_warnings, final_passed, email_sent, essay_answers, candidates (name, email, personnel_no, unit, rating_sought, exam_date, dgac_amel_no, dgac_rating, ga_auth_no, ga_rating)`)
       .order('started_at', { ascending: false })
 
     if (sessionData) setSessions(sessionData)
@@ -348,8 +385,8 @@ export default function AdminDashboard() {
 
   // FUNGSI GHOST AUTO-SEND TABEL KE GMF
   const triggerAutoSendToGMF = async (sessionId: string) => {
-    const targetEmails = 'list-tqd@gmf-aeroasia.co.id, m.apriyansyah@gmf-aeroasia.co.id, arik.yanwar@garuda-indonesia.com';
-    if(!window.confirm(`Send a PDF copy of this document to:\n- list-tqd@gmf-aeroasia.co.id\n- m.apriyansyah@gmf-aeroasia.co.id\n- arik.yanwar@garuda-indonesia.com\n\n(The process runs for 3-5 seconds in the background.).`)) return;
+    const targetEmails = 'mapriyansyahh@gmail.com, arik.yanwar@garuda-indonesia.com';
+    if(!window.confirm(`Send a PDF copy of this document to:\n- mapriyansyahh@gmail.com\n- arik.yanwar@garuda-indonesia.com\n\n(The process runs for 3-5 seconds in the background.).`)) return;
     setAutoSendTarget(targetEmails);
     setPdfCaptured(false);
     await handleViewResult(sessionId);
@@ -359,7 +396,7 @@ export default function AdminDashboard() {
   // ALGORITMA BARU: BULK GHOST RENDER & SEND
   // ====================================================
   const startBulkSend = () => {
-    const targetEmail = window.prompt(`You selected ${selectedForBulk.length} documents to be sent as attachments in ONE email.\n\nEnter destination email (separate multiple emails with commas):`, "list-tqd@gmf-aeroasia.co.id, m.apriyansyah@gmf-aeroasia.co.id, arik.yanwar@garuda-indonesia.com");
+    const targetEmail = window.prompt(`You selected ${selectedForBulk.length} documents to be sent as attachments in ONE email.\n\nEnter destination email (separate multiple emails with commas):`, "mapriyansyahh@gmail.com, arik.yanwar@garuda-indonesia.com");
     if (!targetEmail) return;
 
     setBulkTargetEmail(targetEmail);
@@ -616,7 +653,7 @@ const sendBulkBatchesToAPI = async () => {
 
   // FUNGSI MANUAL SENDER DARI DALAM KERTAS (Kalo View)
   const handleSendEmailWithAttachment = async () => {
-    const targetEmail = window.prompt("Enter the destination email address (Manual Email Destination):", "list-tqd@gmf-aeroasia.co.id, m.apriyansyah@gmf-aeroasia.co.id, arik.yanwar@garuda-indonesia.com");
+    const targetEmail = window.prompt("Enter the destination email address (Manual Email Destination):", "mapriyansyahh@gmail.com, arik.yanwar@garuda-indonesia.com");
     if (!targetEmail) return;
 
     setIsSendingEmail(true);
@@ -1072,172 +1109,172 @@ const sendBulkBatchesToAPI = async () => {
                     </tr>
                   </thead>
                   <tbody>
-                     {/* ROW 1 */}
-                     <tr>
-                       <td className="border border-[#000000] p-2 text-center align-top font-bold text-sm">1</td>
-                       <td className="border border-[#000000] p-2 align-top text-xs">
-                         <div className="font-bold mb-1">GA Regulation/ TM/ Maintenance Program</div>
-                         <ol className="list-decimal pl-4 space-y-0.5 text-[10px]">
-                           <li>CASR Part 21 / 39 / 43 / 65 / 91 / 121 / 145</li>
-                           <li>Maintavi Format (Basic format / AOG / Component, etc)</li>
-                           <li>De-icing / Snow Removal Procedure</li>
-                           <li>Part Robbing Procedure</li>
-                           <li>HIL Issuing</li>
-                           <li>Dispatch Authorization Procedure, etc</li>
-                         </ol>
-                         <div className="border-b border-dotted border-gray-400 mt-5 w-3/4"></div>
-                       </td>
-                       <td className="border border-[#000000] p-0 text-center align-top">
-                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
-                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
-                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
-                         </div>
-                       </td>
-                       <td className="border border-[#000000] p-0 text-center align-top">
-                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
-                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
-                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
-                         </div>
-                       </td>
-                       <td className="border border-[#000000] p-1 align-top"><textarea className="w-full h-full min-h-[70px] resize-none outline-none bg-transparent text-[10px] p-1" placeholder="Type here..."></textarea></td>
-                     </tr>
-                     {/* ROW 2 */}
-                     <tr>
-                       <td className="border border-[#000000] p-2 text-center align-top font-bold text-sm">2</td>
-                       <td className="border border-[#000000] p-2 align-top text-xs">
-                         <div className="font-bold mb-1">Walk Around Inspection / Inspection Sheet</div>
-                         <ol className="list-decimal pl-4 space-y-0.5 text-[10px]">
-                           <li>Nose Section - Significant item - Finding</li>
-                           <li>Main Wheel Area - Significant item - Finding</li>
-                           <li>Engine Section - Significant item - Finding</li>
-                           <li>Wing Area - Significant item - Finding</li>
-                           <li>Tail Section - Significant item - Finding</li>
-                         </ol>
-                         <div className="border-b border-dotted border-gray-400 mt-5 w-3/4"></div>
-                       </td>
-                       <td className="border border-[#000000] p-0 text-center align-top">
-                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
-                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
-                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
-                         </div>
-                       </td>
-                       <td className="border border-[#000000] p-0 text-center align-top">
-                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
-                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
-                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
-                         </div>
-                       </td>
-                       <td className="border border-[#000000] p-1 align-top"><textarea className="w-full h-full min-h-[70px] resize-none outline-none bg-transparent text-[10px] p-1" placeholder="Type here..."></textarea></td>
-                     </tr>
-                     {/* ROW 3 */}
-                     <tr>
-                       <td className="border border-[#000000] p-2 text-center align-top font-bold text-sm">3</td>
-                       <td className="border border-[#000000] p-2 align-top text-xs">
-                         <div className="font-bold mb-1">Manual Reading / Paper work / AML</div>
-                         <ol className="list-decimal pl-4 space-y-0.5 text-[10px]">
-                           <li>DDG - For issuing HIL</li>
-                           <li>IPC - Effectivity P/N</li>
-                           <li>AML - Answering Pilot Report - Completion</li>
-                           <li>Aircraft Technical Publication</li>
-                         </ol>
-                         <div className="border-b border-dotted border-gray-400 mt-5 w-3/4"></div>
-                       </td>
-                       <td className="border border-[#000000] p-0 text-center align-top">
-                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
-                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
-                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
-                         </div>
-                       </td>
-                       <td className="border border-[#000000] p-0 text-center align-top">
-                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
-                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
-                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
-                         </div>
-                       </td>
-                       <td className="border border-[#000000] p-1 align-top"><textarea className="w-full h-full min-h-[70px] resize-none outline-none bg-transparent text-[10px] p-1" placeholder="Type here..."></textarea></td>
-                     </tr>
-                     {/* ROW 4 */}
-                     <tr>
-                       <td className="border border-[#000000] p-2 text-center align-top font-bold text-sm">4</td>
-                       <td className="border border-[#000000] p-2 align-top text-xs">
-                         <div className="font-bold mb-1">Aircraft Document</div>
-                         <ol className="list-decimal pl-4 space-y-0.5 text-[10px]">
-                           <li>A/C document - (Completeness)</li>
-                           <li>C of A, C of R - (Process- Original - A/C effectivity)</li>
-                           <li>Radio Permit - (Process)</li>
-                           <li>A/C Weighing - (Process)</li>
-                           <li>Compass card - (Process)</li>
-                         </ol>
-                         <div className="border-b border-dotted border-gray-400 mt-5 w-3/4"></div>
-                       </td>
-                       <td className="border border-[#000000] p-0 text-center align-top">
-                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
-                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
-                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
-                         </div>
-                       </td>
-                       <td className="border border-[#000000] p-0 text-center align-top">
-                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
-                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
-                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
-                         </div>
-                       </td>
-                       <td className="border border-[#000000] p-1 align-top"><textarea className="w-full h-full min-h-[70px] resize-none outline-none bg-transparent text-[10px] p-1" placeholder="Type here..."></textarea></td>
-                     </tr>
-                     {/* ROW 5 */}
-                     <tr>
-                       <td className="border border-[#000000] p-2 text-center align-top font-bold text-sm">5</td>
-                       <td className="border border-[#000000] p-2 align-top text-xs">
-                         <div className="font-bold mb-1">Aircraft System</div>
-                         <ol className="list-decimal pl-4 space-y-0.5 text-[10px]">
-                           <li>A/C system during walk around check</li>
-                           <li>A/C system procedure, system operational/ functional and trouble shooting per ATA Standard Chapter Number : ( ATA 5 - 12, 20 - 49, 51 - 57, 70 - 80)</li>
-                           <li>Audit & Surveillance System.</li>
-                           <li>A/C Modification, New Technologies, Alteration Status, Critical or Complex Inspection, installation/ adjustment, BITE process, and experience problem</li>
-                           <li>ETOPS, RVSM, AutoLand, RNP, EGPWS, CDLS.</li>
-                           <li>Engine Run Procedures</li>
-                         </ol>
-                         <div className="border-b border-dotted border-gray-400 mt-5 w-3/4"></div>
-                       </td>
-                       <td className="border border-[#000000] p-0 text-center align-top">
-                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
-                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
-                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
-                         </div>
-                       </td>
-                       <td className="border border-[#000000] p-0 text-center align-top">
-                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
-                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
-                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
-                         </div>
-                       </td>
-                       <td className="border border-[#000000] p-1 align-top"><textarea className="w-full h-full min-h-[110px] resize-none outline-none bg-transparent text-[10px] p-1" placeholder="Type here..."></textarea></td>
-                     </tr>
-                     {/* ROW 6 */}
-                     <tr>
-                       <td className="border border-[#000000] p-2 text-center align-top font-bold text-sm">6</td>
-                       <td className="border border-[#000000] p-2 align-top text-xs">
-                         <div className="font-bold mb-1">Personal Attitude and Human Factor</div>
-                         <div className="pl-4 space-y-0.5 text-[10px] flex flex-col">
-                           <span>a. Seeking Information (daya tangkap menerima pertanyaan)</span>
-                           <span>b. Analysis thinking (pengelolaan pertanyaan untuk memberi jawaban)</span>
-                           <span>c. Decision making (memutuskan jawaban yang benar).</span>
-                         </div>
-                       </td>
-                       <td className="border border-[#000000] p-0 text-center align-top">
-                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
-                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
-                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
-                         </div>
-                       </td>
-                       <td className="border border-[#000000] p-0 text-center align-top">
-                         <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
-                           <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
-                           <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
-                         </div>
-                       </td>
-                       <td className="border border-[#000000] p-1 align-top"><textarea className="w-full h-full min-h-[50px] resize-none outline-none bg-transparent text-[10px] p-1" placeholder="Type here..."></textarea></td>
-                     </tr>
+                      {/* ROW 1 */}
+                      <tr>
+                        <td className="border border-[#000000] p-2 text-center align-top font-bold text-sm">1</td>
+                        <td className="border border-[#000000] p-2 align-top text-xs">
+                          <div className="font-bold mb-1">GA Regulation/ TM/ Maintenance Program</div>
+                          <ol className="list-decimal pl-4 space-y-0.5 text-[10px]">
+                            <li>CASR Part 21 / 39 / 43 / 65 / 91 / 121 / 145</li>
+                            <li>Maintavi Format (Basic format / AOG / Component, etc)</li>
+                            <li>De-icing / Snow Removal Procedure</li>
+                            <li>Part Robbing Procedure</li>
+                            <li>HIL Issuing</li>
+                            <li>Dispatch Authorization Procedure, etc</li>
+                          </ol>
+                          <div className="border-b border-dotted border-gray-400 mt-5 w-3/4"></div>
+                        </td>
+                        <td className="border border-[#000000] p-0 text-center align-top">
+                          <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                            <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                            <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                          </div>
+                        </td>
+                        <td className="border border-[#000000] p-0 text-center align-top">
+                          <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                            <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                            <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                          </div>
+                        </td>
+                        <td className="border border-[#000000] p-1 align-top"><textarea className="w-full h-full min-h-[70px] resize-none outline-none bg-transparent text-[10px] p-1" placeholder="Type here..."></textarea></td>
+                      </tr>
+                      {/* ROW 2 */}
+                      <tr>
+                        <td className="border border-[#000000] p-2 text-center align-top font-bold text-sm">2</td>
+                        <td className="border border-[#000000] p-2 align-top text-xs">
+                          <div className="font-bold mb-1">Walk Around Inspection / Inspection Sheet</div>
+                          <ol className="list-decimal pl-4 space-y-0.5 text-[10px]">
+                            <li>Nose Section - Significant item - Finding</li>
+                            <li>Main Wheel Area - Significant item - Finding</li>
+                            <li>Engine Section - Significant item - Finding</li>
+                            <li>Wing Area - Significant item - Finding</li>
+                            <li>Tail Section - Significant item - Finding</li>
+                          </ol>
+                          <div className="border-b border-dotted border-gray-400 mt-5 w-3/4"></div>
+                        </td>
+                        <td className="border border-[#000000] p-0 text-center align-top">
+                          <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                            <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                            <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                          </div>
+                        </td>
+                        <td className="border border-[#000000] p-0 text-center align-top">
+                          <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                            <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                            <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                          </div>
+                        </td>
+                        <td className="border border-[#000000] p-1 align-top"><textarea className="w-full h-full min-h-[70px] resize-none outline-none bg-transparent text-[10px] p-1" placeholder="Type here..."></textarea></td>
+                      </tr>
+                      {/* ROW 3 */}
+                      <tr>
+                        <td className="border border-[#000000] p-2 text-center align-top font-bold text-sm">3</td>
+                        <td className="border border-[#000000] p-2 align-top text-xs">
+                          <div className="font-bold mb-1">Manual Reading / Paper work / AML</div>
+                          <ol className="list-decimal pl-4 space-y-0.5 text-[10px]">
+                            <li>DDG - For issuing HIL</li>
+                            <li>IPC - Effectivity P/N</li>
+                            <li>AML - Answering Pilot Report - Completion</li>
+                            <li>Aircraft Technical Publication</li>
+                          </ol>
+                          <div className="border-b border-dotted border-gray-400 mt-5 w-3/4"></div>
+                        </td>
+                        <td className="border border-[#000000] p-0 text-center align-top">
+                          <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                            <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                            <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                          </div>
+                        </td>
+                        <td className="border border-[#000000] p-0 text-center align-top">
+                          <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                            <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                            <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                          </div>
+                        </td>
+                        <td className="border border-[#000000] p-1 align-top"><textarea className="w-full h-full min-h-[70px] resize-none outline-none bg-transparent text-[10px] p-1" placeholder="Type here..."></textarea></td>
+                      </tr>
+                      {/* ROW 4 */}
+                      <tr>
+                        <td className="border border-[#000000] p-2 text-center align-top font-bold text-sm">4</td>
+                        <td className="border border-[#000000] p-2 align-top text-xs">
+                          <div className="font-bold mb-1">Aircraft Document</div>
+                          <ol className="list-decimal pl-4 space-y-0.5 text-[10px]">
+                            <li>A/C document - (Completeness)</li>
+                            <li>C of A, C of R - (Process- Original - A/C effectivity)</li>
+                            <li>Radio Permit - (Process)</li>
+                            <li>A/C Weighing - (Process)</li>
+                            <li>Compass card - (Process)</li>
+                          </ol>
+                          <div className="border-b border-dotted border-gray-400 mt-5 w-3/4"></div>
+                        </td>
+                        <td className="border border-[#000000] p-0 text-center align-top">
+                          <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                            <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                            <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                          </div>
+                        </td>
+                        <td className="border border-[#000000] p-0 text-center align-top">
+                          <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                            <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                            <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                          </div>
+                        </td>
+                        <td className="border border-[#000000] p-1 align-top"><textarea className="w-full h-full min-h-[70px] resize-none outline-none bg-transparent text-[10px] p-1" placeholder="Type here..."></textarea></td>
+                      </tr>
+                      {/* ROW 5 */}
+                      <tr>
+                        <td className="border border-[#000000] p-2 text-center align-top font-bold text-sm">5</td>
+                        <td className="border border-[#000000] p-2 align-top text-xs">
+                          <div className="font-bold mb-1">Aircraft System</div>
+                          <ol className="list-decimal pl-4 space-y-0.5 text-[10px]">
+                            <li>A/C system during walk around check</li>
+                            <li>A/C system procedure, system operational/ functional and trouble shooting per ATA Standard Chapter Number : ( ATA 5 - 12, 20 - 49, 51 - 57, 70 - 80)</li>
+                            <li>Audit & Surveillance System.</li>
+                            <li>A/C Modification, New Technologies, Alteration Status, Critical or Complex Inspection, installation/ adjustment, BITE process, and experience problem</li>
+                            <li>ETOPS, RVSM, AutoLand, RNP, EGPWS, CDLS.</li>
+                            <li>Engine Run Procedures</li>
+                          </ol>
+                          <div className="border-b border-dotted border-gray-400 mt-5 w-3/4"></div>
+                        </td>
+                        <td className="border border-[#000000] p-0 text-center align-top">
+                          <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                            <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                            <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                          </div>
+                        </td>
+                        <td className="border border-[#000000] p-0 text-center align-top">
+                          <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                            <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                            <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                          </div>
+                        </td>
+                        <td className="border border-[#000000] p-1 align-top"><textarea className="w-full h-full min-h-[110px] resize-none outline-none bg-transparent text-[10px] p-1" placeholder="Type here..."></textarea></td>
+                      </tr>
+                      {/* ROW 6 */}
+                      <tr>
+                        <td className="border border-[#000000] p-2 text-center align-top font-bold text-sm">6</td>
+                        <td className="border border-[#000000] p-2 align-top text-xs">
+                          <div className="font-bold mb-1">Personal Attitude and Human Factor</div>
+                          <div className="pl-4 space-y-0.5 text-[10px] flex flex-col">
+                            <span>a. Seeking Information (daya tangkap menerima pertanyaan)</span>
+                            <span>b. Analysis thinking (pengelolaan pertanyaan untuk memberi jawaban)</span>
+                            <span>c. Decision making (memutuskan jawaban yang benar).</span>
+                          </div>
+                        </td>
+                        <td className="border border-[#000000] p-0 text-center align-top">
+                          <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                            <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                            <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                          </div>
+                        </td>
+                        <td className="border border-[#000000] p-0 text-center align-top">
+                          <div className="relative w-full h-full min-h-[30px] flex items-center justify-center">
+                            <input type="checkbox" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer peer z-10" />
+                            <span className="opacity-0 peer-checked:opacity-100 text-lg font-black text-black select-none pointer-events-none">✓</span>
+                          </div>
+                        </td>
+                        <td className="border border-[#000000] p-1 align-top"><textarea className="w-full h-full min-h-[50px] resize-none outline-none bg-transparent text-[10px] p-1" placeholder="Type here..."></textarea></td>
+                      </tr>
                   </tbody>
                 </table>
                 <div className="flex justify-between text-[10px] font-mono mt-8 text-[#6b7280]"><span>Form MZ 1-17.1 (10-13)</span><span>2 of 2</span></div>
@@ -1563,19 +1600,290 @@ const sendBulkBatchesToAPI = async () => {
                 </div>
                 <div className="flex justify-between text-[9px] font-mono mt-2 text-[#6b7280]"><span>FORM GMF/Q-448</span></div>
               </div>
+
+              {/* ========================================================================================= */}
+              {/* ESSAY QUESTION PAGE 1 (HALAMAN 1 ESSAY)                                                   */}
+              {/* ========================================================================================= */}
+              <div className="fixed-a4 w-[210mm] h-[297mm] bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] px-[15mm] pt-[15mm] pb-[10mm] print:shadow-none print:w-full print:h-[297mm] print:px-[15mm] print:pt-[15mm] print:pb-[10mm] relative flex flex-col overflow-hidden page-break mt-12 print:mt-0 text-black font-sans">
+                 <div className="flex flex-col items-center mb-8">
+                    <img src="/logo.png" alt="Logo" className="h-14 mb-1 object-contain" />
+                    <div className="font-bold text-[16px] leading-tight text-[#64748b] font-sans">Garuda Indonesia</div>
+                    <div className="text-[14px] text-[#64748b] font-sans">Airworthiness Management</div>
+                 </div>
+
+                 {/* FORMAT HEADER BIODATA (Name di atas, Pers No di bawah) */}
+                 <div className="mb-8 text-[13px] flex flex-col gap-3 w-full">
+                    <div className="flex items-end">
+                       <div className="w-[160px] font-bold text-gray-800">Name</div>
+                       <div className="mr-2 font-bold text-gray-800">:</div>
+                       <div className="flex-1 border-b border-[#60a5fa] font-bold text-black uppercase pb-0.5">{resCandidate?.name || ''}</div>
+                    </div>
+                    <div className="flex items-end">
+                       <div className="w-[160px] font-bold text-gray-800">Personnel No. & Unit</div>
+                       <div className="mr-2 font-bold text-gray-800">:</div>
+                       <div className="flex-1 border-b border-[#60a5fa] font-bold text-black uppercase pb-0.5">{resCandidate?.personnel_no || ''} / {resCandidate?.unit || ''}</div>
+                    </div>
+                 </div>
+
+                 <div className="space-y-1.5 text-[13px] mb-6 leading-snug">
+                    <div className="flex gap-2"><span className="w-4">1.</span><p>How do you know about Garuda safety & policy indoctrination and when you got that?</p></div>
+                    <div className="flex gap-2"><span className="w-4">2.</span><p>What are privilege Aircraft maintenance engineer license ref. CASR Part 65?</p></div>
+                    <div className="flex gap-2"><span className="w-4">3.</span><p>Refer CMM chapter IX, what kind of type of maintenance task shall be executed for release to service?</p></div>
+                    <div className="flex gap-2"><span className="w-4">4.</span><p>What are the safety precautions during refueling?</p></div>
+                    <div className="flex gap-2"><span className="w-4">5.</span>
+                       <div>
+                          <p>Simulation task, please write the rectification on AML if this situation below appears:</p>
+                          <p className="font-bold mt-1">Case for Airframe/Avionic:</p>
+                          <p>Ref info DPS MM PK-G.......as GA535 RTO due to WX radar fail. Based on Pilot trip report aircraft RTO at speed 70 Knot.</p>
+                          <p className="mt-4 italic">Note: you can make assumption another parameter that you need on this case, Use AMM ref with ATA-XX-XX rev Oct 2022</p>
+                       </div>
+                    </div>
+                 </div>
+
+                 <div className="mt-2 text-[13px]">
+                    <div className="flex gap-2 mb-6"><span className="w-4">6.</span><p>Please describe what is wrong with this job card.</p></div>
+                    <p className="mb-2 ml-6">a)</p>
+                    <div className="flex justify-center px-4">
+                       <img src="/jobcard1.png" alt="Job Card 1" className="max-h-[300px] w-auto object-contain" />
+                    </div>
+                 </div>
+              </div>
+
+              {/* ========================================================================================= */}
+              {/* ESSAY QUESTION PAGE 2 (HALAMAN 2 ESSAY)                                                   */}
+              {/* ========================================================================================= */}
+              <div className="fixed-a4 w-[210mm] h-[297mm] bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] px-[15mm] pt-[15mm] pb-[10mm] print:shadow-none print:w-full print:h-[297mm] print:px-[15mm] print:pt-[15mm] print:pb-[10mm] relative flex flex-col overflow-hidden page-break mt-12 print:mt-0 text-black font-sans">
+                 <div className="flex flex-col items-center mb-12 opacity-80">
+                    <img src="/logo.png" alt="Logo" className="h-10 mb-1 object-contain" />
+                    <div className="font-bold text-[14px] leading-tight text-[#64748b] font-sans">Garuda Indonesia</div>
+                    <div className="text-[12px] text-[#64748b] font-sans">Airworthiness Management</div>
+                 </div>
+
+                 <div className="mt-4 text-[13px]">
+                    <p className="mb-2 ml-6">b)</p>
+                    <div className="flex justify-center px-4">
+                       <img src="/jobcard2.png" alt="Job Card 2" className="max-h-[350px] w-auto object-contain" />
+                    </div>
+                 </div>
+              </div>
+
+              {/* ========================================================================================= */}
+              {/* ESSAY ANSWER SHEET (HALAMAN DINAMIS UNTUK HASIL UJIAN)                                    */}
+              {/* ========================================================================================= */}
+              <div className="dynamic-page w-[210mm] min-h-[297mm] h-auto bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] px-[10mm] pt-[10mm] pb-[5mm] print:shadow-none print:w-full print:h-auto print:px-[10mm] print:pt-[10mm] print:pb-[5mm] relative flex flex-col page-break mt-12 print:mt-0 text-black font-sans">
+                  
+                  <div className="flex justify-between items-start mb-6 border-b-2 border-black pb-4 shrink-0">
+                    <img src="/logo.png" alt="Garuda Indonesia" className="h-10 object-contain" />
+                    <div className="text-right">
+                      <h1 className="font-black text-xl tracking-widest uppercase text-blue-900">PARTICIPANT ESSAY ANSWERS</h1>
+                      <p className="text-[10px] font-bold text-gray-600 uppercase">Participant Report ID: {resExamResult?.id?.split('-')[0]}</p>
+                    </div>
+                  </div>
+
+                  {/* FORMAT HEADER BIODATA (Name di atas, Pers No di bawah) */}
+                  <div className="mb-8 text-[13px] flex flex-col gap-3 w-full">
+                     <div className="flex items-end">
+                        <div className="w-[160px] font-bold text-gray-800">Name</div>
+                        <div className="mr-2 font-bold text-gray-800">:</div>
+                        <div className="flex-1 border-b border-[#60a5fa] font-bold text-black uppercase pb-0.5">{resCandidate?.name || ''}</div>
+                     </div>
+                     <div className="flex items-end">
+                        <div className="w-[160px] font-bold text-gray-800">Personnel No. & Unit</div>
+                        <div className="mr-2 font-bold text-gray-800">:</div>
+                        <div className="flex-1 border-b border-[#60a5fa] font-bold text-black uppercase pb-0.5">{resCandidate?.personnel_no || ''} / {resCandidate?.unit || ''}</div>
+                     </div>
+                  </div>
+
+                  <div className="flex-1 pr-2">
+                    <div className="space-y-6">
+                      {/* JAWABAN Q1-4 */}
+                      {[
+                        { id: "q1", text: "1. Answer Q1:" },
+                        { id: "q2", text: "2. Answer Q2:" },
+                        { id: "q3", text: "3. Answer Q3:" },
+                        { id: "q4", text: "4. Answer Q4:" },
+                      ].map((q) => (
+                        <div key={q.id} className="break-inside-avoid">
+                          <p className="font-bold text-[11px] mb-1 text-gray-700">{q.text}</p>
+                          <div className="w-full p-3 border border-gray-300 bg-gray-50 text-black whitespace-pre-wrap font-medium text-[11px] leading-relaxed shadow-inner rounded">
+                            {resExamResult?.essay_answers?.[q.id] || <span className="text-gray-400 italic">No Answer Provided</span>}
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* JAWABAN Q5 (AML) */}
+                      <div className="break-inside-avoid mt-4">
+                        <p className="font-bold text-[11px] mb-2 text-gray-700">5. Simulation Task (AML Rectification):</p>
+                        
+                        <div className="flex flex-col gap-8 w-full pb-12 mb-12">
+                          {resExamResult?.essay_answers?.aml?.map((data: any, idx: number) => (
+                            <div key={`aml-ans-${idx}`} className="border-[3px] border-black bg-white text-black font-sans text-[10px] leading-tight select-none shadow-sm flex flex-col mx-auto w-full">
+                              
+                              {/* --- ROW 1 & 2 HEADER --- */}
+                              <div className="flex w-full">
+                                <div className="w-[55%] flex flex-col border-r-[3px] border-black min-w-0">
+                                  <div className="grid h-[46px] border-b-[3px] border-black" style={{ gridTemplateColumns: 'repeat(20, minmax(0, 1fr))' }}>
+                                    <div style={{ gridColumn: 'span 4' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">FLIGHT. No</div><StaticCombGrid count={4} value={data.flightNo} rightBorder={false} flexVal={1}/></div>
+                                    <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">DEP. STA</div><StaticCombGrid count={3} value={data.depSta} rightBorder={false} flexVal={1}/></div>
+                                    <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">A/C. REG</div><StaticCombGrid count={3} value={data.acReg} rightBorder={false} flexVal={1}/></div>
+                                    <div style={{ gridColumn: 'span 6' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">D D M M Y Y</div><StaticCombGrid count={6} value={data.date} rightBorder={false} flexVal={1}/></div>
+                                    <div style={{ gridColumn: 'span 4' }} className="flex flex-col relative min-w-0">
+                                      <div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">SEQ. No</div>
+                                      <div className="flex-1 flex relative">
+                                        <div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div>
+                                        <div className="absolute inset-0 flex pointer-events-none"><div className="flex-1 flex items-center justify-center font-extrabold text-[14px] bg-gray-100">0</div><div className="flex-1 flex items-center justify-center font-extrabold text-[14px] bg-gray-100">{idx}</div><div className="flex-1 flex items-center justify-center font-extrabold text-black font-mono text-[14px]">{data.seqExt?.[0]||''}</div><div className="flex-1 flex items-center justify-center font-extrabold text-black font-mono text-[14px]">{data.seqExt?.[1]||''}</div></div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="h-[44px] border-b-[3px] border-black relative flex items-center px-2 min-w-0">
+                                    <div className="text-[11px] font-extrabold mr-2">Subject:</div>
+                                    <div className="font-extrabold text-black text-[13px] uppercase truncate">{data.subject}</div>
+                                  </div>
+                                </div>
+
+                                {/* KANAN ATAS (Grid 26 Unit) */}
+                                <div className="w-[45%] flex flex-col min-w-0">
+                                  <div className="grid h-[46px] border-b-[3px] border-black" style={{ gridTemplateColumns: 'repeat(26, minmax(0, 1fr))' }}>
+                                    <div style={{ gridColumn: 'span 16' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">PART NUMBER</div><StaticCombGrid count={16} value={data.partNo} rightBorder={false} flexVal={1}/></div>
+                                    {/* M.E.L.R.I di-kecilkan agar tidak mendorong grid */}
+                                    <div style={{ gridColumn: 'span 4' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[9px] tracking-tighter text-center font-extrabold border-b-[2px] border-black py-0.5">M.E.L.R.I</div><StaticCombGrid count={4} value={data.melri} placeholders={['A','B','C','D']} rightBorder={false} flexVal={1}/></div>
+                                    {/* EXTS di-kecilkan agar tidak mendorong grid */}
+                                    <div style={{ gridColumn: 'span 2' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[9px] tracking-tighter text-center font-extrabold border-b-[2px] border-black py-0.5">EXTS</div><StaticCombGrid count={2} value={data.exts} placeholders={['B','C']} rightBorder={false} flexVal={1}/></div>
+                                    <div style={{ gridColumn: 'span 4' }} className="flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">FIC</div><StaticCombGrid count={4} value={data.fic} rightBorder={false} flexVal={1}/></div>
+                                  </div>
+                                  <div className="grid h-[44px] border-b-[3px] border-black" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
+                                    <div style={{ gridColumn: 'span 2' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">POS</div><StaticCombGrid count={2} value={data.pos} rightBorder={false} flexVal={1}/></div>
+                                    <div style={{ gridColumn: 'span 11' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">SERIAL No. IN</div><StaticCombGrid count={11} value={data.serialIn} rightBorder={false} flexVal={1}/></div>
+                                    <div style={{ gridColumn: 'span 11' }} className="flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">SERIAL No. OUT</div><StaticCombGrid count={11} value={data.serialOut} rightBorder={false} flexVal={1}/></div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* --- BAGIAN TENGAH: TEXTAREA --- */}
+                              <div className="flex h-[210px] border-b-[3px] border-black">
+                                <div className="w-[55%] border-r-[3px] border-black flex">
+                                  <div className="w-8 border-r-[2px] border-black flex items-center justify-center bg-gray-50"><span className="-rotate-90 whitespace-nowrap text-[13px] font-extrabold tracking-widest text-black">Complaint</span></div>
+                                  <div className="flex-1 relative p-3 overflow-hidden">
+                                    <div className="whitespace-pre-wrap font-extrabold text-black uppercase leading-tight">{data.complaint}</div>
+                                  </div>
+                                </div>
+                                <div className="w-[45%] flex">
+                                  <div className="flex-1 flex border-r-[3px] border-black">
+                                    <div className="w-8 border-r-[2px] border-black flex items-center justify-center bg-gray-50"><span className="-rotate-90 whitespace-nowrap text-[13px] font-extrabold tracking-widest text-black">Action</span></div>
+                                    <div className="flex-1 relative p-3 overflow-hidden">
+                                      <div className="whitespace-pre-wrap font-extrabold text-black uppercase leading-tight">{data.action}</div>
+                                    </div>
+                                  </div>
+                                  <div className="w-10 flex items-center justify-center bg-gray-50">
+                                    <span className="-rotate-90 whitespace-nowrap font-black text-[16px] tracking-widest text-black">SNAG</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* --- BAGIAN BAWAH: MATRIX SEJAJAR SEMPURNA --- */}
+                              <div className="flex h-[200px]">
+                                
+                                {/* MATRIX KIRI BAWAH */}
+                                <div className="w-[65%] grid border-r-[3px] border-black min-w-0" style={{ gridTemplateColumns: 'repeat(32, minmax(0, 1fr))' }}>
+                                  <div style={{ gridColumn: 'span 10' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col relative bg-[#F4F7F5] min-w-0">
+                                    <span className="text-[11px] text-center py-[4px] font-extrabold border-b-[2px] border-black">Sign</span>
+                                    <div className="flex-1 relative">
+                                        {data.sign && <img src={data.sign} className="absolute inset-0 w-full h-full object-contain mix-blend-multiply p-1" style={{ filter: 'drop-shadow(0 0 1px black) contrast(500%)' }} />}
+                                    </div>
+                                  </div>
+                                  <div style={{ gridColumn: 'span 4' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">FLIGHT TIME</div><StaticCombGrid count={4} value={data.flightTime} rightBorder={false} flexVal={1}/></div>
+                                  <div style={{ gridColumn: 'span 11' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">HYD. REFILL</div><StaticCombGrid count={4} value={data.hyd} placeholders={['S1','S2','S3','S4']} rightBorder={false} flexVal={1}/></div>
+                                  <div style={{ gridColumn: 'span 7' }} className="border-b-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">OIL REFILL</div><StaticCombGrid count={5} value={data.oil} placeholders={['E1','E2','E3','E4','APU']} rightBorder={false} flexVal={1}/></div>
+
+                                  <div style={{ gridColumn: 'span 10' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col min-w-0">
+                                    {idx === 0 ? (
+                                      <>
+                                        <div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px] bg-gray-100">AUTO LAND STATUS</div>
+                                        <div className="flex-1 flex relative">
+                                          <div className="flex-[0.8] bg-gray-300 border-r-[1.5px] border-black"></div>
+                                          <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">YES</div>
+                                          <div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black border-r-[1.5px] border-black">{data.autoYes?.[0]||''}</div>
+                                          <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">NO</div>
+                                          <div className="flex-[2] relative border-r-[1.5px] border-black flex"><div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div><div className="absolute inset-0 flex items-center justify-center font-mono font-extrabold text-[14px] text-black"><div className="flex-1 text-center border-r-[1.5px] border-black h-full flex items-center justify-center">{data.autoNo?.[0]||''}</div><div className="flex-1 text-center h-full flex items-center justify-center">{data.autoNo?.[1]||''}</div></div></div>
+                                          <div className="flex-[0.8] bg-gray-300 border-r-[1.5px] border-black"></div>
+                                          <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">CAT II</div>
+                                          <div className="flex-[2] relative border-r-[1.5px] border-black flex"><div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div><div className="absolute inset-0 flex items-center justify-center font-mono font-extrabold text-[14px] text-black"><div className="flex-1 text-center border-r-[1.5px] border-black h-full flex items-center justify-center">{data.autoCat2?.[0]||''}</div><div className="flex-1 text-center h-full flex items-center justify-center">{data.autoCat2?.[1]||''}</div></div></div>
+                                          <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">III</div>
+                                          <div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black border-r-[1.5px] border-black">{data.autoCat3?.[0]||''}</div>
+                                          <div className="flex-1 bg-gray-300"></div>
+                                          {data.autoYes && data.autoYes.startsWith('data:image') && <img src={data.autoYes} className="absolute inset-0 w-full h-full object-contain mix-blend-multiply" />}
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">COMPLAINT (IMM CODE)</div><StaticCombGrid count={10} value={data.complaintImm} rightBorder={false} flexVal={1}/></>
+                                    )}
+                                  </div>
+                                  <div style={{ gridColumn: 'span 4' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">ETOPS</div><StaticCombGrid count={4} value={data.etops} placeholders={['NE','90','120','180']} rightBorder={false} flexVal={1}/></div>
+                                  <div style={{ gridColumn: 'span 18' }} className="border-b-[2px] border-black flex flex-col min-w-0"><StaticCombGrid count={18} rightBorder={false} flexVal={1}/></div>
+
+                                  <div style={{ gridColumn: 'span 14' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">WORK ORDER NUMBER</div><StaticCombGrid count={14} value={data.workOrder} rightBorder={false} flexVal={1}/></div>
+                                  <div style={{ gridColumn: 'span 11' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">MS. NUMBER</div><StaticCombGrid count={11} value={data.msNumber} rightBorder={false} flexVal={1}/></div>
+                                  <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">INSP</div><StaticCombGrid count={3} value={data.insp} rightBorder={false} flexVal={1}/></div>
+                                  <div style={{ gridColumn: 'span 4' }} className="flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">MHRS</div><StaticCombGrid count={4} value={data.mhrs} rightBorder={false} flexVal={1}/></div>
+                                </div>
+
+                                {/* MATRIX KANAN BAWAH */}
+                                <div className="w-[35%] flex flex-col min-w-0">
+                                  {[
+                                    { label: "Action STA", st: data.actionSta, stCount: 3, dd: data.actionDd, mm: data.actionMm, t: data.actionTime, s: data.actionSign, a: data.actionAuth },
+                                    { label: "Release STA", st: data.releaseSta, stCount: 3, dd: data.releaseDd, mm: data.releaseMm, t: data.releaseTime, s: data.releaseSign, a: data.releaseAuth },
+                                    { label: "R.I.I.", st: data.rii, stCount: 1, dd: data.riiDd, mm: data.riiMm, t: data.riiTime, s: data.riiSign, a: data.riiAuth, isLast: true }
+                                  ].map((row: any, i: number) => (
+                                    <div key={i} className={`grid h-full ${!row.isLast ? 'border-b-[2px] border-black' : ''}`} style={{ gridTemplateColumns: 'repeat(13, minmax(0, 1fr))' }}>
+                                      <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">{row.label}</div><StaticCombGrid count={row.stCount} value={row.st} rightBorder={false} flexVal={1}/></div>
+                                      <div style={{ gridColumn: 'span 2' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">D D</div><StaticCombGrid count={2} value={row.dd} rightBorder={false} flexVal={1}/></div>
+                                      <div style={{ gridColumn: 'span 2' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">M M</div><StaticCombGrid count={2} value={row.mm} rightBorder={false} flexVal={1}/></div>
+                                      
+                                      {/* Time & Auth diperkecil font-nya agar tidak mendorong grid ke luar PDF */}
+                                      <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col min-w-0">
+                                        <div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">Time</div>
+                                        <div className="flex-1 w-full flex items-center justify-center font-mono text-[10px] tracking-tighter font-extrabold text-black overflow-hidden">{row.t}</div>
+                                      </div>
+                                      <div style={{ gridColumn: 'span 3' }} className="flex flex-col min-w-0">
+                                        <div className="flex-1 flex border-b-[2px] border-black relative">
+                                          <span className="w-10 border-r-[2px] border-black text-[11px] font-extrabold flex items-center justify-center bg-gray-50">Sign</span>
+                                          <div className="flex-1 relative bg-[#F4F7F5]">
+                                              {row.s && <img src={row.s} className="absolute inset-0 w-full h-full object-contain mix-blend-multiply p-0.5" style={{ filter: 'drop-shadow(0 0 1px black) contrast(200%)' }} />}
+                                          </div>
+                                        </div>
+                                        <div className="flex-1 flex bg-gray-50/50">
+                                          <span className="w-10 border-r-[2px] border-black text-[11px] font-extrabold flex items-center justify-center bg-gray-50">Auth.</span>
+                                          <div className="flex-1 w-full flex items-center justify-center bg-transparent text-center px-0.5 font-mono uppercase text-[9px] tracking-tighter text-black font-extrabold overflow-hidden">{row.a}</div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* JAWABAN Q6 */}
+                      <div className="break-inside-avoid">
+                        <p className="font-bold text-[11px] mb-1 text-gray-700">6. Answer Q6 (Job Card Description):</p>
+                        <div className="w-full p-3 border border-gray-300 bg-gray-50 text-black whitespace-pre-wrap font-medium text-[11px] leading-relaxed shadow-inner rounded">
+                          {resExamResult?.essay_answers?.q6 || <span className="text-gray-400 italic">No Answer Provided</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+              </div>
           </div>
         </div>
       </>
     )
   }
 
-  // ==========================================
-  // RENDER 3: DASHBOARD UTAMA ADMIN
-  // ==========================================
   return (
     <div className="min-h-screen bg-[#F4F6F9] font-sans pb-20">
-      
-      {/* HAMBARAN LOADING AUTO-SEND TABEL */}
       {autoSendTarget && (
           <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#00102a]/95 backdrop-blur-md text-white">
              <div className="w-20 h-20 border-8 border-t-[#009CB4] border-[#374151] rounded-full animate-spin mb-8"></div>
@@ -1584,8 +1892,6 @@ const sendBulkBatchesToAPI = async () => {
              <p className="text-xs text-[#9ca3af] mt-5">(Please do not close this window)</p>
           </div>
       )}
-
-      {/* HAMBARAN LOADING BULK SEND (KUNING) */}
       {isBulkProcessing && (
         <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#111827]/95 backdrop-blur-md text-white">
            <div className="w-24 h-24 border-8 border-t-[#f59e0b] border-[#374151] rounded-full animate-spin mb-8 shadow-[0_0_20px_rgba(245,158,11,0.5)]"></div>
@@ -1596,8 +1902,6 @@ const sendBulkBatchesToAPI = async () => {
            <p className="text-xs text-[#9ca3af] mt-8">(Please wait. Do not close this window or change tabs)</p>
         </div>
       )}
-
-      {/* MODAL FOTO STATIS (KLIK FOTO PROFIL BIASA) */}
       {selectedPhoto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#00102a]/90 p-4 backdrop-blur-md transition-opacity" onClick={() => setSelectedPhoto(null)}>
           <div className="relative bg-white p-3 rounded-2xl shadow-2xl max-w-sm w-full transform transition-all scale-105" onClick={(e) => e.stopPropagation()}>
@@ -1606,8 +1910,6 @@ const sendBulkBatchesToAPI = async () => {
           </div>
         </div>
       )}
-
-      {/* MODAL LIVE CCTV (UKURAN BESAR & TERUS UPDATE) */}
       {selectedLiveCam && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#00102a]/90 p-4 backdrop-blur-md transition-opacity" onClick={() => setSelectedLiveCam(null)}>
           <div className="relative bg-white p-3 rounded-2xl shadow-2xl max-w-2xl w-full transform transition-all scale-105" onClick={(e) => e.stopPropagation()}>
@@ -1619,8 +1921,6 @@ const sendBulkBatchesToAPI = async () => {
           </div>
         </div>
       )}
-
-      {/* HEADER COMMAND CENTER */}
       <div className="bg-[#002561] text-white pt-10 pb-24 px-6 md:px-12 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-1/3 h-full bg-[#009CB4] opacity-20 skew-x-[-20deg] translate-x-10 pointer-events-none"></div>
         <div className="absolute bottom-0 left-0 w-full h-px bg-linear-to-r from-transparent via-[#009CB4] to-transparent opacity-50"></div>
@@ -1633,309 +1933,38 @@ const sendBulkBatchesToAPI = async () => {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <Link href="/admin/add-question" className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-sm border border-white/20 transition-all backdrop-blur-sm flex items-center gap-2">
-              <span>➕</span> ADD QUESTION
-            </Link>
-            <Link href="/admin/fix" className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-sm border border-white/20 transition-all backdrop-blur-sm flex items-center gap-2">
-              <span>🛠️</span> DB FIX
-            </Link>
-            <button onClick={fetchData} className="px-5 py-2.5 bg-[#009CB4] hover:bg-[#007b8e] text-white rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(0,156,180,0.4)] transition-all flex items-center gap-2">
-              <span>🔄</span> REFRESH
-            </button>
-            <button onClick={handleLogout} className="px-5 py-2.5 bg-[#ef4444]/80 hover:bg-[#ef4444] text-white rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(220,38,38,0.4)] transition-all border border-[#ef4444]">
-              <span>🚪</span> LOGOUT
-            </button>
+            <Link href="/admin/add-question" className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-sm border border-white/20 transition-all backdrop-blur-sm flex items-center gap-2"><span>➕</span> ADD QUESTION</Link>
+            <Link href="/admin/fix" className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-sm border border-white/20 transition-all backdrop-blur-sm flex items-center gap-2"><span>🛠️</span> DB FIX</Link>
+            <button onClick={fetchData} className="px-5 py-2.5 bg-[#009CB4] hover:bg-[#007b8e] text-white rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(0,156,180,0.4)] transition-all flex items-center gap-2"><span>🔄</span> REFRESH</button>
+            <button onClick={handleLogout} className="px-5 py-2.5 bg-[#ef4444]/80 hover:bg-[#ef4444] text-white rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(220,38,38,0.4)] transition-all border border-[#ef4444]"><span>🚪</span> LOGOUT</button>
           </div>
         </div>
       </div>
-
-      {/* CONTENT CARDS */}
       <div className="max-w-7xl mx-auto px-4 md:px-12 -mt-12 space-y-10 relative z-20">
-        
-        {/* CARD 1: MASTER EXAM GATE */}
         <div className="bg-[#ffffff] rounded-3xl shadow-2xl border border-[#e5e7eb] overflow-hidden flex flex-col relative">
           <div className="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-l from-gray-50 to-transparent opacity-50 pointer-events-none"></div>
           <div className="p-8 md:p-10 flex flex-col md:flex-row justify-between items-center gap-8 relative z-10">
-            <div>
-              <h2 className="text-2xl font-black text-[#002561] tracking-wider uppercase flex items-center gap-3 mb-2">
-                <span className="p-3 bg-blue-50 text-[#2563eb] rounded-xl text-xl shadow-sm">🌐</span> Exam Gate
-              </h2>
-              <p className="text-[#6b7280] font-medium text-sm">Control universal access for all candidates</p>
-            </div>
-            
+            <div><h2 className="text-2xl font-black text-[#002561] tracking-wider uppercase flex items-center gap-3 mb-2"><span className="p-3 bg-blue-50 text-[#2563eb] rounded-xl text-xl shadow-sm">🌐</span> Exam Gate</h2><p className="text-[#6b7280] font-medium text-sm">Control universal access for all candidates</p></div>
             <div className="flex flex-col items-center">
               <div className="flex items-center gap-4 bg-[#f3f4f6] p-2 rounded-2xl border border-[#e5e7eb]">
-                 <button 
-                    onClick={() => toggleMasterGate(false)}
-                    className={`px-8 py-4 rounded-xl font-black tracking-widest uppercase transition-all duration-300 ${!isMasterGateOpen ? 'bg-[#ef4444] text-white shadow-[0_10px_20px_rgba(239,68,68,0.3)] scale-105' : 'text-[#9ca3af] hover:bg-gray-200'}`}
-                 >
-                    🔒 CLOSED
-                 </button>
-                 <button 
-                    onClick={() => toggleMasterGate(true)}
-                    className={`px-8 py-4 rounded-xl font-black tracking-widest uppercase transition-all duration-300 ${isMasterGateOpen ? 'bg-[#10b981] text-white shadow-[0_10px_20px_rgba(16,185,129,0.3)] scale-105' : 'text-[#9ca3af] hover:bg-gray-200'}`}
-                 >
-                    🔓 OPEN ALL
-                 </button>
+                 <button onClick={() => toggleMasterGate(false)} className={`px-8 py-4 rounded-xl font-black tracking-widest uppercase transition-all duration-300 ${!isMasterGateOpen ? 'bg-[#ef4444] text-white shadow-[0_10px_20px_rgba(239,68,68,0.3)] scale-105' : 'text-[#9ca3af] hover:bg-gray-200'}`}>🔒 CLOSED</button>
+                 <button onClick={() => toggleMasterGate(true)} className={`px-8 py-4 rounded-xl font-black tracking-widest uppercase transition-all duration-300 ${isMasterGateOpen ? 'bg-[#10b981] text-white shadow-[0_10px_20px_rgba(16,185,129,0.3)] scale-105' : 'text-[#9ca3af] hover:bg-gray-200'}`}>🔓 OPEN ALL</button>
               </div>
-              <p className={`mt-4 text-xs font-bold tracking-widest uppercase flex items-center gap-2 ${isMasterGateOpen ? 'text-[#10b981]' : 'text-[#ef4444]'}`}>
-                 {isMasterGateOpen ? <><span className="w-2 h-2 rounded-full bg-[#10b981] animate-pulse"></span> GATES ARE CURRENTLY OPEN</> : <><span className="w-2 h-2 rounded-full bg-[#ef4444]"></span> GATES ARE CURRENTLY CLOSED</>}
-              </p>
+              <p className={`mt-4 text-xs font-bold tracking-widest uppercase flex items-center gap-2 ${isMasterGateOpen ? 'text-[#10b981]' : 'text-[#ef4444]'}`}>{isMasterGateOpen ? <><span className="w-2 h-2 rounded-full bg-[#10b981] animate-pulse"></span> GATES ARE CURRENTLY OPEN</> : <><span className="w-2 h-2 rounded-full bg-[#ef4444]"></span> GATES ARE CURRENTLY CLOSED</>}</p>
             </div>
           </div>
         </div>
-
-        {/* CARD 2: LIVE PARTICIPANTS WITH FILTER */}
         <div className="bg-[#ffffff] rounded-3xl shadow-2xl border border-[#e5e7eb] overflow-hidden flex flex-col">
           <div className="p-6 md:p-8 border-b border-[#e5e7eb] bg-[#ffffff] flex flex-col gap-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-black text-[#002561] tracking-wider uppercase flex items-center gap-3">
-                <span className="p-2 bg-blue-50 text-[#2563eb] rounded-lg text-lg">🧑‍✈️</span> Live Participants & Exam Results
-              </h2>
-              <div className="flex items-center">
-                <span className="bg-[#f3f4f6] text-[#4b5563] px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest shadow-sm border border-[#d1d5db]">
-                  {groupedSessions.length} CANDIDATES FOUND
-                </span>
-                {/* TOMBOL BULK SEND MUNCUL JIKA ADA YANG DICENTANG */}
-                {selectedForBulk.length > 0 && (
-                  <button onClick={startBulkSend} className="ml-4 px-5 py-1.5 bg-[#f59e0b] hover:bg-[#d97706] text-white rounded-full text-[10px] font-black tracking-widest shadow-[0_0_15px_rgba(245,158,11,0.4)] hover:scale-105 transition-all animate-bounce border border-[#fcd34d] flex items-center gap-2">
-                    <span className="text-sm">📨</span> BULK SEND ({selectedForBulk.length})
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* FILTER TOOLBAR */}
-            <div className="flex flex-col xl:flex-row gap-4 items-center justify-between bg-[#f9fafb] p-4 rounded-2xl border border-[#e5e7eb]">
-               {/* Search */}
-               <div className="relative w-full xl:w-auto flex-1 max-w-md">
-                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl">🔍</span>
-                 <input 
-                   type="text" 
-                   placeholder="Search Name or Pers No..." 
-                   value={searchTerm}
-                   onChange={(e) => setSearchTerm(e.target.value)}
-                   className="w-full pl-12 pr-4 py-3 rounded-xl border border-[#d1d5db] focus:outline-none focus:border-[#009CB4] text-sm font-bold text-[#002561] placeholder-gray-400 shadow-inner"
-                 />
-               </div>
-
-               <div className="flex flex-col md:flex-row items-center gap-4 w-full xl:w-auto">
-                 {/* Date Picker */}
-                 <div className="flex items-center gap-3 w-full md:w-auto bg-white border border-[#d1d5db] px-4 py-2 rounded-xl shadow-sm">
-                   <span className="text-lg">📅</span>
-                   <input 
-                     type="date" 
-                     value={dateFilter}
-                     onChange={(e) => setDateFilter(e.target.value)}
-                     className="focus:outline-none text-sm font-bold text-[#002561] uppercase cursor-pointer"
-                   />
-                   {dateFilter && (
-                     <button onClick={() => setDateFilter('')} className="text-[10px] bg-red-100 text-red-600 font-bold px-2 py-1 rounded-md hover:bg-red-200 transition-all uppercase tracking-wider">Clear</button>
-                   )}
-                 </div>
-
-                 {/* Status Pills */}
-                 <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
-                   {['ALL', 'LIVE', 'PASSED', 'FAILED'].map(status => (
-                     <button 
-                       key={status}
-                       onClick={() => setStatusFilter(status)}
-                       className={`px-5 py-2.5 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all whitespace-nowrap border-2 ${
-                         statusFilter === status 
-                           ? status === 'LIVE' ? 'bg-[#f59e0b] text-white border-[#f59e0b] shadow-[0_4px_10px_rgba(245,158,11,0.3)]'
-                           : status === 'PASSED' ? 'bg-[#10b981] text-white border-[#10b981] shadow-[0_4px_10px_rgba(16,185,129,0.3)]'
-                           : status === 'FAILED' ? 'bg-[#ef4444] text-white border-[#ef4444] shadow-[0_4px_10px_rgba(239,68,68,0.3)]'
-                           : 'bg-[#002561] text-white border-[#002561] shadow-[0_4px_10px_rgba(0,37,97,0.3)]'
-                           : 'bg-white border-[#e5e7eb] text-[#6b7280] hover:bg-gray-100'
-                       }`}
-                     >
-                       {status}
-                     </button>
-                   ))}
-                 </div>
-               </div>
-            </div>
+            <div className="flex justify-between items-center"><h2 className="text-xl font-black text-[#002561] tracking-wider uppercase flex items-center gap-3"><span className="p-2 bg-blue-50 text-[#2563eb] rounded-lg text-lg">🧑‍✈️</span> Live Participants & Exam Results</h2><div className="flex items-center"><span className="bg-[#f3f4f6] text-[#4b5563] px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest shadow-sm border border-[#d1d5db]">{groupedSessions.length} CANDIDATES FOUND</span>{selectedForBulk.length > 0 && (<button onClick={startBulkSend} className="ml-4 px-5 py-1.5 bg-[#f59e0b] hover:bg-[#d97706] text-white rounded-full text-[10px] font-black tracking-widest shadow-[0_0_15px_rgba(245,158,11,0.4)] hover:scale-105 transition-all animate-bounce border border-[#fcd34d] flex items-center gap-2"><span className="text-sm">📨</span> BULK SEND ({selectedForBulk.length})</button>)}</div></div>
+            <div className="flex flex-col xl:flex-row gap-4 items-center justify-between bg-[#f9fafb] p-4 rounded-2xl border border-[#e5e7eb]"><div className="relative w-full xl:w-auto flex-1 max-w-md"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl">🔍</span><input type="text" placeholder="Search Name or Pers No..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 rounded-xl border border-[#d1d5db] focus:outline-none focus:border-[#009CB4] text-sm font-bold text-[#002561] placeholder-gray-400 shadow-inner" /></div><div className="flex flex-col md:flex-row items-center gap-4 w-full xl:w-auto"><div className="flex items-center gap-3 w-full md:w-auto bg-white border border-[#d1d5db] px-4 py-2 rounded-xl shadow-sm"><span className="text-lg">📅</span><input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="focus:outline-none text-sm font-bold text-[#002561] uppercase cursor-pointer" />{dateFilter && (<button onClick={() => setDateFilter('')} className="text-[10px] bg-red-100 text-red-600 font-bold px-2 py-1 rounded-md hover:bg-red-200 transition-all uppercase tracking-wider">Clear</button>)}</div><div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">{['ALL', 'LIVE', 'PASSED', 'FAILED'].map(status => (<button key={status} onClick={() => setStatusFilter(status)} className={`px-5 py-2.5 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all whitespace-nowrap border-2 ${statusFilter === status ? status === 'LIVE' ? 'bg-[#f59e0b] text-white border-[#f59e0b] shadow-[0_4px_10px_rgba(245,158,11,0.3)]' : status === 'PASSED' ? 'bg-[#10b981] text-white border-[#10b981] shadow-[0_4px_10px_rgba(16,185,129,0.3)]' : status === 'FAILED' ? 'bg-[#ef4444] text-white border-[#ef4444] shadow-[0_4px_10px_rgba(239,68,68,0.3)]' : 'bg-[#002561] text-white border-[#002561] shadow-[0_4px_10px_rgba(0,37,97,0.3)]' : 'bg-white border-[#e5e7eb] text-[#6b7280] hover:bg-gray-100'}`}>{status}</button>))}</div></div></div>
           </div>
-          
           <div className="overflow-x-auto w-full">
-            <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-[#f9fafb]/50 text-[#002561] border-b border-[#e5e7eb] text-xs uppercase tracking-wider font-bold">
-                <tr>
-                  <th className="p-5 pl-8 w-32">Photo / CCTV</th>
-                  <th className="p-5 w-64 border-r border-[#e5e7eb]">Candidate Info</th>
-                  <th className="p-5 pl-8">Exam Modules & Results</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#e5e7eb]">
-                {groupedSessions.length === 0 ? (
-                  <tr><td colSpan={3} className="p-8 text-center text-[#9ca3af] font-medium tracking-wide">No participants match your search criteria.</td></tr>
-                ) : groupedSessions.map((group: any, index: number) => {
-                  
-                  // 1. DATA IDENTITAS (Diambil cukup 1 kali per orang)
-                  const cand = group.candidate; 
-                  const candName = cand?.name || 'Unknown'; 
-                  const candNo = cand?.personnel_no || 'N/A';
-                  const candEmail = cand?.email || 'No Email'; 
-                  const candUnit = cand?.unit || 'No Unit';
-                  const candPhoto = cand?.photo || null; 
-
-                  // Cek apakah ada ujian yang sedang "LIVE" untuk menampilkan CCTV
-                  const activeSession = group.exams.find((s: any) => s.status !== 'COMPLETED');
-                  const displayLiveCam = activeSession ? liveFrames[activeSession.id] : null;
-
-                  return (
-                    <tr key={index} className="hover:bg-blue-50/10 transition-colors">
-                      
-                      {/* ========================================== */}
-                      {/* KOLOM 1: AVATAR PROFIL KANDIDAT            */}
-                      {/* ========================================== */}
-                      <td className="p-5 pl-8 align-top">
-                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#f3f4f6] to-[#e5e7eb] border-2 border-[#d1d5db] flex items-center justify-center text-[#9ca3af] shadow-inner">
-                            <span className="text-2xl">👤</span>
-                        </div>
-                      </td>
-
-                      {/* ========================================== */}
-                      {/* KOLOM 2: NAMA & PERSONNEL NO               */}
-                      {/* ========================================== */}
-                      <td className="p-5 align-top border-r border-[#e5e7eb]">
-                        <div className="flex flex-col">
-                          <span className="font-black uppercase text-[#002561] text-sm mb-1">
-                            {candName} 
-                          </span>
-                          <span className="text-[#009CB4] text-[10px] font-black tracking-widest px-2 py-0.5 bg-[#009CB4]/10 rounded border border-[#009CB4]/20 w-fit mb-1.5">
-                            ID: {candNo}
-                          </span>
-                          <span className="text-[11px] text-[#6b7280] font-medium">
-                            {candEmail}
-                          </span>
-                          <span className="text-[11px] font-black text-[#4b5563] tracking-widest uppercase mt-0.5">
-                            {candUnit}
-                          </span>
-                        </div>
-                      </td>
-                    
-                      {/* ========================================== */}
-                      {/* KOLOM 3: DAFTAR UJIAN (BISA LEBIH DARI 1)  */}
-                      {/* ========================================== */}
-                      <td className="p-0 align-top">
-                        <div className="flex flex-col divide-y divide-[#f3f4f6]">
-                          
-                          {/* LOOPING KEDUA: Memunculkan baris untuk setiap ujian yang diambil kandidat */}
-                          {group.exams.map((session: any) => {
-                             const isPassed = session.final_passed !== null ? session.final_passed : (session.score >= 75);
-                             const warnings = session.cheat_warnings || 0;
-
-                             return (
-                               <div key={session.id} className="flex flex-wrap xl:flex-nowrap items-center justify-between p-5 pl-8 hover:bg-white transition-colors gap-4">
-                                  
-                                  {/* BAGIAN A: INFO MODUL PESAWAT */}
-                                  <div className="w-full xl:w-1/3 flex flex-col gap-1">
-                                    <span className="font-bold text-[#1f2937] text-sm">
-                                      {session.type_of_ac || '-'}
-                                    </span>
-                                    <span className="text-[10px] text-[#6b7280] font-bold uppercase tracking-wider">
-                                      {session.kategori || '-'} • {session.subject} #{session.exam_no}
-                                    </span>
-                                  </div>
-                                  
-                                  {/* BAGIAN B: SCORE & STATUS PROGRESS */}
-                                  <div className="w-full xl:w-1/3 flex flex-col items-start gap-1.5">
-                                    {session.status === 'COMPLETED' ? (
-                                      <>
-                                        <div className="flex items-center gap-2">
-                                          <span className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded border border-emerald-200 text-[10px] font-black uppercase tracking-widest">
-                                            Finished
-                                          </span>
-                                          <span className="font-black text-[#002561] text-xs">Score: {session.score}</span>
-                                        </div>
-                                        <span className="text-[10px] font-bold text-[#9ca3af]">Time: 00:00</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <div className="flex items-center gap-2">
-                                          <span className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 rounded border border-amber-200 text-[10px] font-black uppercase tracking-widest animate-pulse">
-                                            <span className="w-2 h-2 inline-block rounded-full bg-[#f59e0b]"></span> Progress
-                                          </span>
-                                          <span className="font-bold text-[#6b7280] text-xs">Score: {session.score}</span>
-                                        </div>
-                                        <span className="text-[10px] font-bold text-[#2563eb] flex items-center gap-1">
-                                          <span className="text-sm">⏳</span> {getRemainingTime(session.started_at)} remaining
-                                        </span>
-                                      </>
-                                    )}
-                                    {(warnings > 0) && (
-                                      <span className="px-2 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded text-[9px] font-bold tracking-wider flex items-center gap-1 shadow-sm animate-pulse">
-                                        ⚠️ Violations: {warnings}/5
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  {/* BAGIAN C: HASIL LULUS & TOMBOL AKSI */}
-                                  <div className="w-full xl:w-1/3 flex items-center justify-end gap-3">
-                                    
-                                    {session.status === 'COMPLETED' ? (
-                                      <div className="flex items-center gap-1 mr-2">
-                                        <div className={`px-3 py-1 text-[11px] font-black tracking-widest uppercase rounded border shadow-sm ${isPassed ? 'bg-[#10b981] text-white border-[#059669]' : 'bg-[#ef4444] text-white border-[#dc2626]'}`}>
-                                          {isPassed ? 'PASSED' : 'FAILED'}
-                                        </div>
-                                        {isPassed ? (
-                                          <button onClick={() => handleAdjustResult(session.id, false)} title="Force Fail" className="p-1 text-[#d1d5db] hover:text-[#dc2626] transition-colors">❌</button>
-                                        ) : (
-                                          <button onClick={() => handleAdjustResult(session.id, true)} title="Force Pass" className="p-1 text-[#d1d5db] hover:text-[#059669] transition-colors">✓</button>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <span className="text-[#d1d5db] font-bold mr-4">-</span>
-                                    )}
-
-                                    <div className="flex items-center gap-1.5">
-                                      {session.status === 'COMPLETED' && (
-                                        <>
-                                          {/* CHECKBOX BULK SELECT */}
-                                          <label className={`flex items-center gap-2 cursor-pointer mr-3 px-2 py-1.5 rounded-lg border transition-colors ${selectedForBulk.includes(session.id) ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'}`}>
-                                            <input 
-                                               type="checkbox" 
-                                               checked={selectedForBulk.includes(session.id)}
-                                               onChange={(e) => {
-                                                  if(e.target.checked) setSelectedForBulk(prev => [...prev, session.id]);
-                                                  else setSelectedForBulk(prev => prev.filter(id => id !== session.id));
-                                               }}
-                                               className="w-4 h-4 cursor-pointer accent-[#2563eb]"
-                                            />
-                                          </label>
-
-                                          <button onClick={() => handleViewResult(session.id)} title="View / Print Document" className="p-2 bg-[#002561] hover:bg-[#00102a] text-white rounded-lg shadow-md transition-transform hover:scale-105">
-                                            🖨️
-                                          </button>
-                                          <button onClick={() => handleSendEmail(session)} title="Send Email Notification" className={`p-2 rounded-lg border transition-all ${session.email_sent ? 'bg-[#f3f4f6] text-[#9ca3af] border-[#e5e7eb]' : 'bg-[#ffffff] text-[#009CB4] border-[#009CB4] hover:bg-[#009CB4]/10'}`}>
-                                            📧
-                                          </button>
-                                          <button onClick={() => triggerAutoSendToGMF(session.id)} title="Auto-Send PDF to GMF" className="p-2 bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-lg shadow-md transition-transform hover:scale-105">
-                                            📄
-                                          </button>
-                                        </>
-                                      )}
-                                      <button onClick={() => resetParticipant(session.id, candName)} title="Delete Exam" className="p-2 text-[#d1d5db] hover:text-[#ef4444] hover:bg-red-50 rounded-lg transition-colors ml-1">
-                                        🗑️
-                                      </button>
-                                    </div>
-
-                                  </div>
-                               </div>
-                             )
-                          })}
-
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+            <table className="w-full text-left text-sm whitespace-nowrap"><thead className="bg-[#f9fafb]/50 text-[#002561] border-b border-[#e5e7eb] text-xs uppercase tracking-wider font-bold"><tr><th className="p-5 pl-8 w-32">Photo / CCTV</th><th className="p-5 w-64 border-r border-[#e5e7eb]">Candidate Info</th><th className="p-5 pl-8">Exam Modules & Results</th></tr></thead><tbody className="divide-y divide-[#e5e7eb]">{groupedSessions.length === 0 ? (<tr><td colSpan={3} className="p-8 text-center text-[#9ca3af] font-medium tracking-wide">No participants match your search criteria.</td></tr>) : groupedSessions.map((group: any, index: number) => {
+                  const cand = group.candidate; const candName = cand?.name || 'Unknown'; const candNo = cand?.personnel_no || 'N/A'; const candEmail = cand?.email || 'No Email'; const candUnit = cand?.unit || 'No Unit'; const activeSession = group.exams.find((s: any) => s.status !== 'COMPLETED');
+                  return (<tr key={index} className="hover:bg-blue-50/10 transition-colors"><td className="p-5 pl-8 align-top"><div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#f3f4f6] to-[#e5e7eb] border-2 border-[#d1d5db] flex items-center justify-center text-[#9ca3af] shadow-inner"><span className="text-2xl">👤</span></div></td><td className="p-5 align-top border-r border-[#e5e7eb]"><div className="flex flex-col"><span className="font-black uppercase text-[#002561] text-sm mb-1">{candName}</span><span className="text-[#009CB4] text-[10px] font-black tracking-widest px-2 py-0.5 bg-[#009CB4]/10 rounded border border-[#009CB4]/20 w-fit mb-1.5">ID: {candNo}</span><span className="text-[11px] text-[#6b7280] font-medium">{candEmail}</span><span className="text-[11px] font-black text-[#4b5563] tracking-widest uppercase mt-0.5">{candUnit}</span></div></td><td className="p-0 align-top"><div className="flex flex-col divide-y divide-[#f3f4f6]">{group.exams.map((session: any) => { const isPassed = session.final_passed !== null ? session.final_passed : (session.score >= 75); const warnings = session.cheat_warnings || 0; return (<div key={session.id} className="flex flex-wrap xl:flex-nowrap items-center justify-between p-5 pl-8 hover:bg-white transition-colors gap-4"><div className="w-full xl:w-1/3 flex flex-col gap-1"><span className="font-bold text-[#1f2937] text-sm">{session.type_of_ac || '-'}</span><span className="text-[10px] text-[#6b7280] font-bold uppercase tracking-wider">{session.kategori || '-'} • {session.subject} #{session.exam_no}</span></div><div className="w-full xl:w-1/3 flex flex-col items-start gap-1.5">{session.status === 'COMPLETED' ? (<><div className="flex items-center gap-2"><span className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded border border-emerald-200 text-[10px] font-black uppercase tracking-widest">Finished</span><span className="font-black text-[#002561] text-xs">Score: {session.score}</span></div><span className="text-[10px] font-bold text-[#9ca3af]">Time: 00:00</span></>) : (<><div className="flex items-center gap-2"><span className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 rounded border border-amber-200 text-[10px] font-black uppercase tracking-widest animate-pulse"><span className="w-2 h-2 inline-block rounded-full bg-[#f59e0b]"></span> Progress</span><span className="font-bold text-[#6b7280] text-xs">Score: {session.score}</span></div><span className="text-[10px] font-bold text-[#2563eb] flex items-center gap-1"><span className="text-sm">⏳</span> {getRemainingTime(session.started_at)} remaining</span></>)}{warnings > 0 && (<span className="px-2 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded text-[9px] font-bold tracking-wider flex items-center gap-1 shadow-sm animate-pulse">⚠️ Violations: {warnings}/5</span>)}</div><div className="w-full xl:w-1/3 flex items-center justify-end gap-3">{session.status === 'COMPLETED' ? (<div className="flex items-center gap-1 mr-2"><div className={`px-3 py-1 text-[11px] font-black tracking-widest uppercase rounded border shadow-sm ${isPassed ? 'bg-[#10b981] text-white border-[#059669]' : 'bg-[#ef4444] text-white border-[#dc2626]'}`}>{isPassed ? 'PASSED' : 'FAILED'}</div>{isPassed ? (<button onClick={() => handleAdjustResult(session.id, false)} className="p-1 text-[#d1d5db] hover:text-[#dc2626]">❌</button>) : (<button onClick={() => handleAdjustResult(session.id, true)} className="p-1 text-[#d1d5db] hover:text-[#059669]">✓</button>)}</div>) : (<span className="text-[#d1d5db] font-bold mr-4">-</span>)}<div className="flex items-center gap-1.5">{session.status === 'COMPLETED' && (<><label className={`flex items-center gap-2 cursor-pointer mr-3 px-2 py-1.5 rounded-lg border transition-colors ${selectedForBulk.includes(session.id) ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'}`}><input type="checkbox" checked={selectedForBulk.includes(session.id)} onChange={(e) => { if(e.target.checked) setSelectedForBulk(prev => [...prev, session.id]); else setSelectedForBulk(prev => prev.filter(id => id !== session.id)); }} className="w-4 h-4 cursor-pointer accent-[#2563eb]" /></label><button onClick={() => handleViewResult(session.id)} className="p-2 bg-[#002561] text-white rounded-lg shadow-md hover:scale-105">🖨️</button><button onClick={() => handleSendEmail(session)} className={`p-2 rounded-lg border ${session.email_sent ? 'bg-[#f3f4f6] text-[#9ca3af]' : 'bg-[#ffffff] text-[#009CB4] border-[#009CB4]'}`}>📧</button><button onClick={() => triggerAutoSendToGMF(session.id)} className="p-2 bg-[#2563eb] text-white rounded-lg shadow-md hover:scale-105">📄</button></>)}<button onClick={() => resetParticipant(session.id, candName)} className="p-2 text-[#d1d5db] hover:text-[#ef4444] hover:bg-red-50 rounded-lg ml-1">🗑️</button></div></div></div>)})}</div></td></tr>)})}</tbody></table>
           </div>
         </div>
-
       </div>
     </div>
   )
