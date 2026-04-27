@@ -66,7 +66,7 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
   const isUnloading = useRef(false) 
   const cheatTimeout = useRef<NodeJS.Timeout | null>(null)
   
-  const MAX_WARNINGS = 99
+  const MAX_WARNINGS = 5
 
   useEffect(() => {
     const savedWarnings = localStorage.getItem(`cheat_${examResultId}`)

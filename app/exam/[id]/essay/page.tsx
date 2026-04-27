@@ -186,7 +186,7 @@ export default function EssayPage({ params }: { params: Promise<{ id: string }> 
   const isSystemDialogActive = useRef(false);
   const isUnloading = useRef(false);
   const cheatTimeout = useRef<NodeJS.Timeout | null>(null);
-  const MAX_WARNINGS = 99;
+  const MAX_WARNINGS = 5;
 
   // Essay Answers State
   const [answers, setAnswers] = useState({
