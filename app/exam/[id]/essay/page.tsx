@@ -51,7 +51,7 @@ const DrawPad = ({ value, onChange, className = "" }: any) => {
     ctx?.moveTo(e.clientX - rect.left, e.clientY - rect.top);
     if (ctx) {
       ctx.strokeStyle = "black";
-      ctx.lineWidth = 2.5; // DIBUAT TEBAL SESUAI PERMINTAAN
+      ctx.lineWidth = 15; // DIBUAT TEBAL SESUAI PERMINTAAN
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
     }
@@ -650,7 +650,7 @@ export default function EssayPage({ params }: { params: Promise<{ id: string }> 
                                   </div>
                                 </div>
                                 <div className="flex-1 flex bg-gray-50/50">
-                                  <span className="w-10 border-r-[2px] border-black text-[11px] font-extrabold flex items-center justify-center bg-gray-50">Auth.</span>
+                                  <span className="w-10 border-r-[2px] border-black text-[9px] font-extrabold flex items-center justify-center bg-gray-50">Auth.</span>
                                   <input name={row.a} value={(data as any)[row.a]} onChange={(e) => handleAmlChange(idx, e)} className="flex-1 w-full bg-transparent outline-none text-center px-0.5 font-mono uppercase text-[11px] text-black font-extrabold" />
                                 </div>
                               </div>

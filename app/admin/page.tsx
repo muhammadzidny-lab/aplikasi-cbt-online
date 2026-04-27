@@ -160,39 +160,66 @@ const AdminSignaturePad = React.memo(({ value, onChange }: { value: string, onCh
   )
 }, (prevProps, nextProps) => prevProps.value === nextProps.value) // <--- Ini Tamengnya!
 
+
 // =======================================================================
-// KOMPONEN READ-ONLY ESSAY: TAMPILAN GAMBAR CORETAN
+// KOMPONEN STATIC UNTUK ADMIN (Meniru persis komponen dari halaman Essay)
 // =======================================================================
 const StaticDrawPad = ({ value, className = "" }: { value: string, className?: string }) => {
   if (!value || !value.startsWith('data:image')) return <div className={`absolute inset-0 z-20 ${className}`}></div>;
   return (
     <div className={`absolute inset-0 z-20 flex items-center justify-center pointer-events-none ${className}`}>
-      <img src={value} alt="Drawing" className="w-full h-full object-fill" />
+      <img 
+        src={value} 
+        alt="Drawing" 
+        className="w-full h-full object-contain mix-blend-multiply" 
+        style={{ 
+          // Efek ganda untuk menebalkan dan menghitamkan tinta sekecil apapun
+          filter: 'grayscale(100%) contrast(1000%) drop-shadow(0px 0px 1px black) drop-shadow(0px 0px 0.5px black)' 
+        }} 
+      />
     </div>
   );
 };
 
-const StaticCombGrid = ({ count, label, value = "", placeholders = [], rightBorder = true, flexVal }: any) => {
+const StaticCombGrid = ({ count, value = "", placeholders = [] }: any) => {
   const safeValue = typeof value === 'string' ? value : "";
   const chars = safeValue.split('').slice(0, count);
   return (
-    <div className={`relative flex flex-col bg-white min-w-0 ${rightBorder ? 'border-r-[2px] border-black' : ''}`} style={flexVal ? { flex: flexVal } : {}}>
-      {label && <div className="text-[10px] text-center font-extrabold z-10 leading-none py-[3px] border-b-[2px] border-black text-black truncate">{label}</div>}
-      <div className="flex-1 flex w-full relative min-w-0">
-        <div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none">
-           {Array.from({length: count}).map((_, i) => (
-              <div key={`tick-${i}`} className={`flex-1 ${i < count - 1 ? 'border-r-[1.5px] border-black' : ''}`}></div>
-           ))}
-        </div>
-        <div className="absolute inset-0 flex pointer-events-none">
-           {Array.from({length: count}).map((_, i) => (
-              <div key={`char-${i}`} className={`flex-1 flex items-center justify-center font-mono ${placeholders.length ? 'text-[8px] tracking-tighter font-bold text-gray-400' : 'text-[12px] font-extrabold text-black uppercase'} z-10 overflow-hidden`}>
-                {placeholders.length ? placeholders[i] : (chars[i] || '')}
-              </div>
-           ))}
-        </div>
-        {placeholders.length > 0 && <StaticDrawPad value={safeValue} />}
+    <div className="flex-1 flex w-full relative">
+      <div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none">
+         {Array.from({length: count}).map((_, i) => (
+            <div key={`tick-${i}`} className={`flex-1 ${i < count - 1 ? 'border-r-[1.5px] border-black' : ''}`}></div>
+         ))}
       </div>
+      <div className="absolute inset-0 flex pointer-events-none">
+         {Array.from({length: count}).map((_, i) => (
+            <div key={`char-${i}`} className={`flex-1 flex items-center justify-center font-mono ${placeholders.length ? 'text-[12px] font-bold text-gray-300' : 'text-[14px] font-extrabold text-black uppercase'} z-10`}>
+              {placeholders.length ? placeholders[i] : (chars[i] || '')}
+            </div>
+         ))}
+      </div>
+      {placeholders.length > 0 && safeValue && <StaticDrawPad value={safeValue} />}
+    </div>
+  )
+};
+
+const StaticSectionInputGrid = ({ count, value = "", placeholders = [] }: any) => {
+  const safeValue = typeof value === 'string' ? value : "";
+  return (
+    <div className="flex-1 flex w-full relative">
+      <div className="absolute inset-0 flex pointer-events-none">
+         {Array.from({length: count}).map((_, i) => (
+            <div key={`line-${i}`} className={`flex-1 ${i < count - 1 ? 'border-r-[1.5px] border-black' : ''}`}></div>
+         ))}
+      </div>
+      <div className="absolute inset-0 flex pointer-events-none">
+        {placeholders.map((ph: string, i: number) => (
+           <div key={`ph-${i}`} className="flex-1 flex items-center justify-center font-mono text-[8px] font-bold text-gray-400 z-10">
+             {ph}
+           </div>
+        ))}
+      </div>
+      {safeValue && <StaticDrawPad value={safeValue} />}
     </div>
   )
 };
@@ -466,12 +493,20 @@ const sendBulkBatchesToAPI = async () => {
                 const element = document.getElementById('auto-pdf-wrapper');
                 if (!element) throw new Error("Document wrapper tidak ditemukan di layar.");
 
+                // ISOLASI HALAMAN 2 & ESSAY
                 const page2ToExclude = document.getElementById('pdf-page-2-exclude');
                 let page2OriginalDisplay = '';
                 if (page2ToExclude) {
                     page2OriginalDisplay = page2ToExclude.style.display;
                     page2ToExclude.style.setProperty('display', 'none', 'important');
                 }
+
+                const essayPages = document.querySelectorAll('.pdf-essay-exclude');
+                const essayOriginalDisplays: string[] = [];
+                essayPages.forEach((page) => {
+                    essayOriginalDisplays.push((page as HTMLElement).style.display);
+                    (page as HTMLElement).style.setProperty('display', 'none', 'important');
+                });
 
                 const originalGap = element.style.gap;
                 element.style.setProperty('gap', '0px', 'important');
@@ -514,6 +549,10 @@ const sendBulkBatchesToAPI = async () => {
 
                 // KEMBALIKAN STYLE KE ASAL
                 if (page2ToExclude) page2ToExclude.style.display = page2OriginalDisplay;
+                essayPages.forEach((page, index) => {
+                    (page as HTMLElement).style.display = essayOriginalDisplays[index];
+                });
+
                 element.style.gap = originalGap;
                 element.classList.add('items-center', 'w-full');
                 element.style.width = '';
@@ -551,7 +590,7 @@ const sendBulkBatchesToAPI = async () => {
             const element = document.getElementById('auto-pdf-wrapper');
             if (!element) throw new Error("Document wrapper tidak ditemukan di layar.");
 
-            // ISOLASI HALAMAN 2 AGAR TIDAK TERKIRIM EMAIL (SESUAI REQUEST)
+            // ISOLASI HALAMAN 2 & ESSAY AGAR TIDAK TERKIRIM EMAIL
             const page2ToExclude = document.getElementById('pdf-page-2-exclude');
             let page2OriginalDisplay = '';
             if (page2ToExclude) {
@@ -559,8 +598,14 @@ const sendBulkBatchesToAPI = async () => {
                 page2ToExclude.style.setProperty('display', 'none', 'important');
             }
 
+            const essayPages = document.querySelectorAll('.pdf-essay-exclude');
+            const essayOriginalDisplays: string[] = [];
+            essayPages.forEach((page) => {
+                essayOriginalDisplays.push((page as HTMLElement).style.display);
+                (page as HTMLElement).style.setProperty('display', 'none', 'important');
+            });
+
             // TRIK SAKTI MENCEGAH BLANK PAGE:
-            // Buang margin antar kertas dan paksa tingginya murni 297mm
             const originalGap = element.style.gap;
             element.style.setProperty('gap', '0px', 'important');
             element.classList.remove('items-center', 'w-full');
@@ -592,9 +637,6 @@ const sendBulkBatchesToAPI = async () => {
                 document.body.appendChild(script);
             });
             
-            // KUNCI UTAMA: Kita hilangkan konfigurasi pagebreak dari html2pdf. 
-            // Karena ukuran kertas sudah diatur tepat 297mm, html2pdf akan otomatis 
-            // memotong setiap 297mm dengan sempurna tanpa menambah blank page.
             const opt = {
                 margin:       0,
                 filename:     `Exam_Result_${resCandidate?.name || 'Candidate'}.pdf`,
@@ -609,6 +651,10 @@ const sendBulkBatchesToAPI = async () => {
             if (page2ToExclude) {
                 page2ToExclude.style.display = page2OriginalDisplay;
             }
+            essayPages.forEach((page, index) => {
+                (page as HTMLElement).style.display = essayOriginalDisplays[index];
+            });
+
             element.style.gap = originalGap;
             element.classList.add('items-center', 'w-full');
             element.style.width = '';
@@ -651,9 +697,8 @@ const sendBulkBatchesToAPI = async () => {
     }
   }, [autoSendTarget, viewingResultId, resLoading, resCandidate, pdfCaptured]);
 
-  // FUNGSI MANUAL SENDER DARI DALAM KERTAS (Kalo View)
   const handleSendEmailWithAttachment = async () => {
-    const targetEmail = window.prompt("Enter the destination email address (Manual Email Destination):", "mapriyansyahh@gmail.com, arik.yanwar@garuda-indonesia.com");
+    const targetEmail = window.prompt("Enter the destination email address (Manual Email Destination):", "list-tqd@gmf-aeroasia.co.id, m.apriyansyah@gmf-aeroasia.co.id, arik.yanwar@garuda-indonesia.com");
     if (!targetEmail) return;
 
     setIsSendingEmail(true);
@@ -664,13 +709,20 @@ const sendBulkBatchesToAPI = async () => {
         const element = document.getElementById('auto-pdf-wrapper');
         if (!element) throw new Error("Elemen PDF belum siap di layar. Silakan tunggu.");
 
-        // ISOLASI HALAMAN 2 AGAR TIDAK TERKIRIM EMAIL (SESUAI REQUEST)
+        // ISOLASI HALAMAN 2 & ESSAY AGAR TIDAK TERKIRIM EMAIL
         const page2ToExclude = document.getElementById('pdf-page-2-exclude');
         let page2OriginalDisplay = '';
         if (page2ToExclude) {
             page2OriginalDisplay = page2ToExclude.style.display;
             page2ToExclude.style.setProperty('display', 'none', 'important');
         }
+
+        const essayPages = document.querySelectorAll('.pdf-essay-exclude');
+        const essayOriginalDisplays: string[] = [];
+        essayPages.forEach((page) => {
+            essayOriginalDisplays.push((page as HTMLElement).style.display);
+            (page as HTMLElement).style.setProperty('display', 'none', 'important');
+        });
 
         const originalGap = element.style.gap;
         element.style.setProperty('gap', '0px', 'important');
@@ -713,9 +765,14 @@ const sendBulkBatchesToAPI = async () => {
 
         const pdfBase64 = await html2pdf().from(element).set(opt).outputPdf('datauristring');
 
+        // KEMBALIKAN STYLE KE ASAL
         if (page2ToExclude) {
             page2ToExclude.style.display = page2OriginalDisplay;
         }
+        essayPages.forEach((page, index) => {
+            (page as HTMLElement).style.display = essayOriginalDisplays[index];
+        });
+
         element.style.gap = originalGap;
         element.classList.add('items-center', 'w-full');
         element.style.width = '';
@@ -1349,16 +1406,16 @@ const sendBulkBatchesToAPI = async () => {
                     </div>
                   </div>
                 </div>
-                <div className="flex mt-1 mb-2">
-                  <div className="w-2/3 text-[10px] pr-4 pt-2">
+                <div className="flex mt-2 mb-3 items-stretch">
+                  <div className="w-2/3 text-[10px] pr-4 pt-1">
                     <p>1. Read the questions carefully.</p>
                     <p>2. Cross the column for the chosen answer.</p>
-                    <p>3. Donot write anything on the booklet</p>
+                    <p>3. Do not write anything on the booklet.</p>
                     <p className="font-bold">4. Passing-grade 75%</p>
                   </div>
-                  <div className="w-1/3 border border-[#000000] h-18 relative flex justify-center items-center overflow-hidden">
-                    <span className="text-[10px] absolute top-1 left-1 z-10 text-[#374151] font-bold">Signature:</span>
-                    {resCandidate?.signature && (<img src={resCandidate.signature} alt="Sign" className="h-full w-auto object-contain scale-[1.5] mix-blend-multiply" />)}
+                  <div className="w-1/3 border border-[#000000] min-h-[65px] relative flex justify-center items-center overflow-hidden">
+                    <span className="text-[10px] absolute top-1 left-1 z-10 text-[#000000] font-bold">Signature:</span>
+                    {resCandidate?.signature && (<img src={resCandidate.signature} alt="Sign" className="absolute inset-0 w-full h-full object-contain scale-[1.3] mix-blend-multiply pt-3" />)}
                   </div>
                 </div>
                 <div className="border-2 border-[#000000] p-1 flex gap-1 mt-1">
@@ -1523,16 +1580,16 @@ const sendBulkBatchesToAPI = async () => {
                   </div>
                 </div>
                 
-                <div className="flex mt-1 mb-2">
+                <div className="flex mt-2 mb-3 items-stretch">
                   <div className="w-3/4 text-[10px] pr-4 pt-1">
-                    <p>1. Read the question carefully</p>
-                    <p>2. Cross the coloumn for the chosen answer</p>
-                    <p>3. Do not write anything on the booklet</p>
+                    <p>1. Read the question carefully.</p>
+                    <p>2. Cross the column for the chosen answer.</p>
+                    <p>3. Do not write anything on the booklet.</p>
                     <p className="font-bold">4. Passing grade score 75%</p>
                   </div>
-                  <div className="w-1/4 border border-[#000000] h-18 relative flex justify-center items-center overflow-hidden">
-                    <span className="text-[10px] absolute top-1 left-1 z-10 text-[#374151] font-bold">Signature:</span>
-                    {resCandidate?.signature && (<img src={resCandidate.signature} alt="Sign" className="h-full w-auto object-contain scale-[1.5] mix-blend-multiply" />)}
+                  <div className="w-1/4 border border-[#000000] min-h-[65px] relative flex justify-center items-center overflow-hidden">
+                    <span className="text-[10px] absolute top-1 left-1 z-10 text-[#000000] font-bold">Signature:</span>
+                    {resCandidate?.signature && (<img src={resCandidate.signature} alt="Sign" className="absolute inset-0 w-full h-full object-contain scale-[1.3] mix-blend-multiply pt-3" />)}
                   </div>
                 </div>
 
@@ -1604,7 +1661,7 @@ const sendBulkBatchesToAPI = async () => {
               {/* ========================================================================================= */}
               {/* ESSAY QUESTION PAGE 1 (HALAMAN 1 ESSAY)                                                   */}
               {/* ========================================================================================= */}
-              <div className="fixed-a4 w-[210mm] h-[297mm] bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] px-[15mm] pt-[15mm] pb-[10mm] print:shadow-none print:w-full print:h-[297mm] print:px-[15mm] print:pt-[15mm] print:pb-[10mm] relative flex flex-col overflow-hidden page-break mt-12 print:mt-0 text-black font-sans">
+              <div className="pdf-essay-exclude fixed-a4 w-[210mm] h-[297mm] bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] px-[15mm] pt-[15mm] pb-[10mm] print:shadow-none print:w-full print:h-[297mm] print:px-[15mm] print:pt-[15mm] print:pb-[10mm] relative flex flex-col overflow-hidden page-break mt-12 print:mt-0 text-black font-sans">
                  <div className="flex flex-col items-center mb-8">
                     <img src="/logo.png" alt="Logo" className="h-14 mb-1 object-contain" />
                     <div className="font-bold text-[16px] leading-tight text-[#64748b] font-sans">Garuda Indonesia</div>
@@ -1652,7 +1709,7 @@ const sendBulkBatchesToAPI = async () => {
               {/* ========================================================================================= */}
               {/* ESSAY QUESTION PAGE 2 (HALAMAN 2 ESSAY)                                                   */}
               {/* ========================================================================================= */}
-              <div className="fixed-a4 w-[210mm] h-[297mm] bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] px-[15mm] pt-[15mm] pb-[10mm] print:shadow-none print:w-full print:h-[297mm] print:px-[15mm] print:pt-[15mm] print:pb-[10mm] relative flex flex-col overflow-hidden page-break mt-12 print:mt-0 text-black font-sans">
+              <div className="pdf-essay-exclude fixed-a4 w-[210mm] h-[297mm] bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] px-[15mm] pt-[15mm] pb-[10mm] print:shadow-none print:w-full print:h-[297mm] print:px-[15mm] print:pt-[15mm] print:pb-[10mm] relative flex flex-col overflow-hidden page-break mt-12 print:mt-0 text-black font-sans">
                  <div className="flex flex-col items-center mb-12 opacity-80">
                     <img src="/logo.png" alt="Logo" className="h-10 mb-1 object-contain" />
                     <div className="font-bold text-[14px] leading-tight text-[#64748b] font-sans">Garuda Indonesia</div>
@@ -1670,7 +1727,7 @@ const sendBulkBatchesToAPI = async () => {
               {/* ========================================================================================= */}
               {/* ESSAY ANSWER SHEET (HALAMAN DINAMIS UNTUK HASIL UJIAN)                                    */}
               {/* ========================================================================================= */}
-              <div className="dynamic-page w-[210mm] min-h-[297mm] h-auto bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] px-[10mm] pt-[10mm] pb-[5mm] print:shadow-none print:w-full print:h-auto print:px-[10mm] print:pt-[10mm] print:pb-[5mm] relative flex flex-col page-break mt-12 print:mt-0 text-black font-sans">
+              <div className="pdf-essay-exclude dynamic-page w-[210mm] min-h-[297mm] h-auto bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] px-[10mm] pt-[10mm] pb-[5mm] print:shadow-none print:w-full print:h-auto print:px-[10mm] print:pt-[10mm] print:pb-[5mm] relative flex flex-col page-break mt-12 print:mt-0 text-black font-sans">
                   
                   <div className="flex justify-between items-start mb-6 border-b-2 border-black pb-4 shrink-0">
                     <img src="/logo.png" alt="Garuda Indonesia" className="h-10 object-contain" />
@@ -1711,91 +1768,102 @@ const sendBulkBatchesToAPI = async () => {
                         </div>
                       ))}
 
-                      {/* JAWABAN Q5 (AML) */}
-                      <div className="break-inside-avoid mt-4">
-                        <p className="font-bold text-[11px] mb-2 text-gray-700">5. Simulation Task (AML Rectification):</p>
+                      {/* JAWABAN Q5 (AML) - KEMBALI KE FORMAT FULL WIDTH ASLI */}
+                      {/* print:mt-12 ditambahkan agar judul tidak mepet atas di Halaman 2 */}
+                      <div className="w-full mt-4 print:mt-12">
+                        <p className="font-bold text-[11px] mb-2 print:mb-6 text-gray-700">5. Simulation Task (AML Rectification):</p>
                         
-                        <div className="flex flex-col gap-8 w-full pb-12 mb-12">
+                        {/* ZOOM DIHAPUS, kembali normal */}
+                        <div className="flex flex-col w-full pb-12">
                           {resExamResult?.essay_answers?.aml?.map((data: any, idx: number) => (
-                            <div key={`aml-ans-${idx}`} className="border-[3px] border-black bg-white text-black font-sans text-[10px] leading-tight select-none shadow-sm flex flex-col mx-auto w-full">
+                            <div 
+                              key={`aml-ans-${idx}`} 
+                              /* KEMBALI MENGGUNAKAN w-full, tapi logika jarak & halamannya tetap kita pakai */
+                              className={`w-full border-[3px] border-black bg-white text-black font-sans text-[10px] leading-tight select-none flex flex-col break-inside-avoid shadow-sm
+                                ${idx === 0 ? 'mt-0' : ''}
+                                ${idx === 1 ? 'mt-8' : ''}
+                                ${idx === 2 ? 'mt-8 print:break-before-page print:mt-[120px]' : ''}
+                              `}
+                            >
                               
                               {/* --- ROW 1 & 2 HEADER --- */}
-                              <div className="flex w-full">
-                                <div className="w-[55%] flex flex-col border-r-[3px] border-black min-w-0">
-                                  <div className="grid h-[46px] border-b-[3px] border-black" style={{ gridTemplateColumns: 'repeat(20, minmax(0, 1fr))' }}>
-                                    <div style={{ gridColumn: 'span 4' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">FLIGHT. No</div><StaticCombGrid count={4} value={data.flightNo} rightBorder={false} flexVal={1}/></div>
-                                    <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">DEP. STA</div><StaticCombGrid count={3} value={data.depSta} rightBorder={false} flexVal={1}/></div>
-                                    <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">A/C. REG</div><StaticCombGrid count={3} value={data.acReg} rightBorder={false} flexVal={1}/></div>
-                                    <div style={{ gridColumn: 'span 6' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">D D M M Y Y</div><StaticCombGrid count={6} value={data.date} rightBorder={false} flexVal={1}/></div>
-                                    <div style={{ gridColumn: 'span 4' }} className="flex flex-col relative min-w-0">
-                                      <div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">SEQ. No</div>
-                                      <div className="flex-1 flex relative">
-                                        <div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div>
-                                        <div className="absolute inset-0 flex pointer-events-none"><div className="flex-1 flex items-center justify-center font-extrabold text-[14px] bg-gray-100">0</div><div className="flex-1 flex items-center justify-center font-extrabold text-[14px] bg-gray-100">{idx}</div><div className="flex-1 flex items-center justify-center font-extrabold text-black font-mono text-[14px]">{data.seqExt?.[0]||''}</div><div className="flex-1 flex items-center justify-center font-extrabold text-black font-mono text-[14px]">{data.seqExt?.[1]||''}</div></div>
-                                      </div>
+                              {/* (Biarkan kode ke bawahnya tetap sama) */}
+                              <div className="flex w-full border-b-[3px] border-black h-[46px]">
+                                <div className="w-[55%] flex border-r-[3px] border-black">
+                                  <div className="flex-[4] border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">FLIGHT. No</div><StaticCombGrid count={4} value={data.flightNo} /></div>
+                                  <div className="flex-[3] border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">DEP. STA</div><StaticCombGrid count={3} value={data.depSta} /></div>
+                                  <div className="flex-[3] border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">A/C. REG</div><StaticCombGrid count={3} value={data.acReg} /></div>
+                                  <div className="flex-[6] border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">D D M M Y Y</div><StaticCombGrid count={6} value={data.date} /></div>
+                                  <div className="flex-[4] flex flex-col relative bg-gray-50">
+                                    <div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5 uppercase">SEQ. No</div>
+                                    <div className="flex-1 flex relative bg-white">
+                                      <div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div>
+                                      <div className="absolute inset-0 flex pointer-events-none z-10"><div className="flex-1 flex items-center justify-center font-extrabold text-[14px] bg-gray-100 border-r-[1.5px] border-black">0</div><div className="flex-1 flex items-center justify-center font-extrabold text-[14px] bg-gray-100 border-r-[1.5px] border-black">{idx}</div><div className="flex-1 flex items-center justify-center font-extrabold text-black font-mono text-[14px] border-r-[1.5px] border-black">{data.seqExt?.[0]||''}</div><div className="flex-1 flex items-center justify-center font-extrabold text-black font-mono text-[14px]">{data.seqExt?.[1]||''}</div></div>
                                     </div>
                                   </div>
-                                  <div className="h-[44px] border-b-[3px] border-black relative flex items-center px-2 min-w-0">
-                                    <div className="text-[11px] font-extrabold mr-2">Subject:</div>
-                                    <div className="font-extrabold text-black text-[13px] uppercase truncate">{data.subject}</div>
-                                  </div>
                                 </div>
-
-                                {/* KANAN ATAS (Grid 26 Unit) */}
-                                <div className="w-[45%] flex flex-col min-w-0">
-                                  <div className="grid h-[46px] border-b-[3px] border-black" style={{ gridTemplateColumns: 'repeat(26, minmax(0, 1fr))' }}>
-                                    <div style={{ gridColumn: 'span 16' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">PART NUMBER</div><StaticCombGrid count={16} value={data.partNo} rightBorder={false} flexVal={1}/></div>
-                                    {/* M.E.L.R.I di-kecilkan agar tidak mendorong grid */}
-                                    <div style={{ gridColumn: 'span 4' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[9px] tracking-tighter text-center font-extrabold border-b-[2px] border-black py-0.5">M.E.L.R.I</div><StaticCombGrid count={4} value={data.melri} placeholders={['A','B','C','D']} rightBorder={false} flexVal={1}/></div>
-                                    {/* EXTS di-kecilkan agar tidak mendorong grid */}
-                                    <div style={{ gridColumn: 'span 2' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[9px] tracking-tighter text-center font-extrabold border-b-[2px] border-black py-0.5">EXTS</div><StaticCombGrid count={2} value={data.exts} placeholders={['B','C']} rightBorder={false} flexVal={1}/></div>
-                                    <div style={{ gridColumn: 'span 4' }} className="flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">FIC</div><StaticCombGrid count={4} value={data.fic} rightBorder={false} flexVal={1}/></div>
-                                  </div>
-                                  <div className="grid h-[44px] border-b-[3px] border-black" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
-                                    <div style={{ gridColumn: 'span 2' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">POS</div><StaticCombGrid count={2} value={data.pos} rightBorder={false} flexVal={1}/></div>
-                                    <div style={{ gridColumn: 'span 11' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">SERIAL No. IN</div><StaticCombGrid count={11} value={data.serialIn} rightBorder={false} flexVal={1}/></div>
-                                    <div style={{ gridColumn: 'span 11' }} className="flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">SERIAL No. OUT</div><StaticCombGrid count={11} value={data.serialOut} rightBorder={false} flexVal={1}/></div>
-                                  </div>
+                                <div className="w-[45%] flex">
+                                  <div className="flex-[16] border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">PART NUMBER</div><StaticCombGrid count={16} value={data.partNo} /></div>
+                                  <div className="flex-[4] border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">M.E.L.R.I</div><StaticSectionInputGrid count={4} value={data.melri} placeholders={['A','B','C','D']} /></div>
+                                  <div className="flex-[2] border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">EXTS</div><StaticSectionInputGrid count={2} value={data.exts} placeholders={['B','C']} /></div>
+                                  <div className="flex-[4] flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">FIC</div><StaticCombGrid count={4} value={data.fic} /></div>
                                 </div>
                               </div>
 
-                              {/* --- BAGIAN TENGAH: TEXTAREA --- */}
-                              <div className="flex h-[210px] border-b-[3px] border-black">
+                              {/* --- ROW 2: SUBJECT & SERIAL --- */}
+                              <div className="flex w-full border-b-[3px] border-black h-[44px]">
+                                <div className="w-[55%] border-r-[3px] border-black relative flex items-center px-3 bg-white">
+                                  <div className="text-[11px] font-extrabold mr-2">Subject:</div>
+                                  <div className="flex-1 h-full flex items-center bg-transparent font-extrabold text-black text-[13px] uppercase pb-0.5 truncate">{data.subject}</div>
+                                </div>
+                                <div className="w-[45%] flex">
+                                  <div className="flex-[2] border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">POS</div><StaticCombGrid count={2} value={data.pos} /></div>
+                                  <div className="flex-[11] border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">SERIAL No. IN</div><StaticCombGrid count={11} value={data.serialIn} /></div>
+                                  <div className="flex-[11] flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">SERIAL No. OUT</div><StaticCombGrid count={11} value={data.serialOut} /></div>
+                                </div>
+                              </div>
+
+                              {/* --- ROW 3: COMPLAINT & ACTION --- */}
+                              <div className="flex h-[210px] border-b-[3px] border-black bg-white">
                                 <div className="w-[55%] border-r-[3px] border-black flex">
-                                  <div className="w-8 border-r-[2px] border-black flex items-center justify-center bg-gray-50"><span className="-rotate-90 whitespace-nowrap text-[13px] font-extrabold tracking-widest text-black">Complaint</span></div>
-                                  <div className="flex-1 relative p-3 overflow-hidden">
-                                    <div className="whitespace-pre-wrap font-extrabold text-black uppercase leading-tight">{data.complaint}</div>
+                                  <div className="w-8 border-r-[2px] border-black flex items-center justify-center bg-gray-50">
+                                    <span className="-rotate-90 whitespace-nowrap text-[13px] font-extrabold tracking-widest text-black uppercase">Complaint</span>
+                                  </div>
+                                  <div className="flex-1 relative bg-[repeating-linear-gradient(transparent,transparent_34px,#d1d5db_34px,#d1d5db_35px)] bg-[size:100%_35px]">
+                                    <div className="absolute inset-0 w-full h-full bg-transparent font-extrabold text-black uppercase text-[12px] leading-[35px] pt-[7px] pl-[8px] pr-[4px] whitespace-pre-wrap">{data.complaint}</div>
                                   </div>
                                 </div>
                                 <div className="w-[45%] flex">
                                   <div className="flex-1 flex border-r-[3px] border-black">
-                                    <div className="w-8 border-r-[2px] border-black flex items-center justify-center bg-gray-50"><span className="-rotate-90 whitespace-nowrap text-[13px] font-extrabold tracking-widest text-black">Action</span></div>
-                                    <div className="flex-1 relative p-3 overflow-hidden">
-                                      <div className="whitespace-pre-wrap font-extrabold text-black uppercase leading-tight">{data.action}</div>
+                                    <div className="w-8 border-r-[2px] border-black flex items-center justify-center bg-gray-50">
+                                      <span className="-rotate-90 whitespace-nowrap text-[13px] font-extrabold tracking-widest text-black uppercase">Action</span>
+                                    </div>
+                                    <div className="flex-1 relative bg-[repeating-linear-gradient(transparent,transparent_34px,#d1d5db_34px,#d1d5db_35px)] bg-[size:100%_35px]">
+                                      <div className="absolute inset-0 w-full h-full bg-transparent font-extrabold text-black uppercase text-[12px] leading-[35px] pt-[7px] pl-[8px] pr-[4px] whitespace-pre-wrap">{data.action}</div>
                                     </div>
                                   </div>
                                   <div className="w-10 flex items-center justify-center bg-gray-50">
-                                    <span className="-rotate-90 whitespace-nowrap font-black text-[16px] tracking-widest text-black">SNAG</span>
+                                    <span className="-rotate-90 whitespace-nowrap font-black text-lg tracking-widest text-black">SNAG</span>
                                   </div>
                                 </div>
                               </div>
 
-                              {/* --- BAGIAN BAWAH: MATRIX SEJAJAR SEMPURNA --- */}
+                              {/* --- ROW 4: BOTTOM MATRIX --- */}
                               <div className="flex h-[200px]">
                                 
                                 {/* MATRIX KIRI BAWAH */}
-                                <div className="w-[65%] grid border-r-[3px] border-black min-w-0" style={{ gridTemplateColumns: 'repeat(32, minmax(0, 1fr))' }}>
-                                  <div style={{ gridColumn: 'span 10' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col relative bg-[#F4F7F5] min-w-0">
+                                <div className="w-[65%] grid border-r-[3px] border-black" style={{ gridTemplateColumns: 'repeat(32, minmax(0, 1fr))' }}>
+                                  <div style={{ gridColumn: 'span 10' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col relative bg-[#F4F7F5]">
                                     <span className="text-[11px] text-center py-[4px] font-extrabold border-b-[2px] border-black">Sign</span>
                                     <div className="flex-1 relative">
-                                        {data.sign && <img src={data.sign} className="absolute inset-0 w-full h-full object-contain mix-blend-multiply p-1" style={{ filter: 'drop-shadow(0 0 1px black) contrast(500%)' }} />}
+                                        <StaticDrawPad value={data.sign} />
                                     </div>
                                   </div>
-                                  <div style={{ gridColumn: 'span 4' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">FLIGHT TIME</div><StaticCombGrid count={4} value={data.flightTime} rightBorder={false} flexVal={1}/></div>
-                                  <div style={{ gridColumn: 'span 11' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">HYD. REFILL</div><StaticCombGrid count={4} value={data.hyd} placeholders={['S1','S2','S3','S4']} rightBorder={false} flexVal={1}/></div>
-                                  <div style={{ gridColumn: 'span 7' }} className="border-b-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">OIL REFILL</div><StaticCombGrid count={5} value={data.oil} placeholders={['E1','E2','E3','E4','APU']} rightBorder={false} flexVal={1}/></div>
+                                  <div style={{ gridColumn: 'span 4' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">FLIGHT TIME</div><StaticCombGrid count={4} value={data.flightTime} /></div>
+                                  <div style={{ gridColumn: 'span 11' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">HYD. REFILL</div><StaticSectionInputGrid count={4} value={data.hyd} placeholders={['S1','S2','S3','S4']} /></div>
+                                  <div style={{ gridColumn: 'span 7' }} className="border-b-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">OIL REFILL</div><StaticSectionInputGrid count={5} value={data.oil} placeholders={['E1','E2','E3','E4','APU']} /></div>
 
-                                  <div style={{ gridColumn: 'span 10' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col min-w-0">
+                                  <div style={{ gridColumn: 'span 10' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col">
                                     {idx === 0 ? (
                                       <>
                                         <div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px] bg-gray-100">AUTO LAND STATUS</div>
@@ -1804,27 +1872,28 @@ const sendBulkBatchesToAPI = async () => {
                                           <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">YES</div>
                                           <div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black border-r-[1.5px] border-black">{data.autoYes?.[0]||''}</div>
                                           <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">NO</div>
-                                          <div className="flex-[2] relative border-r-[1.5px] border-black flex"><div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div><div className="absolute inset-0 flex items-center justify-center font-mono font-extrabold text-[14px] text-black"><div className="flex-1 text-center border-r-[1.5px] border-black h-full flex items-center justify-center">{data.autoNo?.[0]||''}</div><div className="flex-1 text-center h-full flex items-center justify-center">{data.autoNo?.[1]||''}</div></div></div>
+                                          <div className="flex-[2] relative border-r-[1.5px] border-black flex"><div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div><div className="absolute inset-0 flex pointer-events-none"><div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black">{data.autoNo?.[0]||''}</div><div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black">{data.autoNo?.[1]||''}</div></div></div>
                                           <div className="flex-[0.8] bg-gray-300 border-r-[1.5px] border-black"></div>
                                           <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">CAT II</div>
-                                          <div className="flex-[2] relative border-r-[1.5px] border-black flex"><div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div><div className="absolute inset-0 flex items-center justify-center font-mono font-extrabold text-[14px] text-black"><div className="flex-1 text-center border-r-[1.5px] border-black h-full flex items-center justify-center">{data.autoCat2?.[0]||''}</div><div className="flex-1 text-center h-full flex items-center justify-center">{data.autoCat2?.[1]||''}</div></div></div>
+                                          <div className="flex-[2] relative border-r-[1.5px] border-black flex"><div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div><div className="absolute inset-0 flex pointer-events-none"><div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black">{data.autoCat2?.[0]||''}</div><div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black">{data.autoCat2?.[1]||''}</div></div></div>
                                           <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">III</div>
                                           <div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black border-r-[1.5px] border-black">{data.autoCat3?.[0]||''}</div>
                                           <div className="flex-1 bg-gray-300"></div>
-                                          {data.autoYes && data.autoYes.startsWith('data:image') && <img src={data.autoYes} className="absolute inset-0 w-full h-full object-contain mix-blend-multiply" />}
+                                          
+                                          <StaticDrawPad value={data.autoYes} />
                                         </div>
                                       </>
                                     ) : (
-                                      <><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">COMPLAINT (IMM CODE)</div><StaticCombGrid count={10} value={data.complaintImm} rightBorder={false} flexVal={1}/></>
+                                      <><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">COMPLAINT (IMM CODE)</div><StaticCombGrid count={10} value={data.complaintImm} /></>
                                     )}
                                   </div>
-                                  <div style={{ gridColumn: 'span 4' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">ETOPS</div><StaticCombGrid count={4} value={data.etops} placeholders={['NE','90','120','180']} rightBorder={false} flexVal={1}/></div>
-                                  <div style={{ gridColumn: 'span 18' }} className="border-b-[2px] border-black flex flex-col min-w-0"><StaticCombGrid count={18} rightBorder={false} flexVal={1}/></div>
+                                  <div style={{ gridColumn: 'span 4' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">ETOPS</div><StaticSectionInputGrid count={4} value={data.etops} placeholders={['NE','90','120','180']} /></div>
+                                  <div style={{ gridColumn: 'span 18' }} className="border-b-[2px] border-black flex flex-col"><StaticCombGrid count={18} /></div>
 
-                                  <div style={{ gridColumn: 'span 14' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">WORK ORDER NUMBER</div><StaticCombGrid count={14} value={data.workOrder} rightBorder={false} flexVal={1}/></div>
-                                  <div style={{ gridColumn: 'span 11' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">MS. NUMBER</div><StaticCombGrid count={11} value={data.msNumber} rightBorder={false} flexVal={1}/></div>
-                                  <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">INSP</div><StaticCombGrid count={3} value={data.insp} rightBorder={false} flexVal={1}/></div>
-                                  <div style={{ gridColumn: 'span 4' }} className="flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">MHRS</div><StaticCombGrid count={4} value={data.mhrs} rightBorder={false} flexVal={1}/></div>
+                                  <div style={{ gridColumn: 'span 14' }} className="border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">WORK ORDER NUMBER</div><StaticCombGrid count={14} value={data.workOrder} /></div>
+                                  <div style={{ gridColumn: 'span 11' }} className="border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">MS. NUMBER</div><StaticCombGrid count={11} value={data.msNumber} /></div>
+                                  <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">INSP</div><StaticCombGrid count={3} value={data.insp} /></div>
+                                  <div style={{ gridColumn: 'span 4' }} className="flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">MHRS</div><StaticCombGrid count={4} value={data.mhrs} /></div>
                                 </div>
 
                                 {/* MATRIX KANAN BAWAH */}
@@ -1838,8 +1907,6 @@ const sendBulkBatchesToAPI = async () => {
                                       <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">{row.label}</div><StaticCombGrid count={row.stCount} value={row.st} rightBorder={false} flexVal={1}/></div>
                                       <div style={{ gridColumn: 'span 2' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">D D</div><StaticCombGrid count={2} value={row.dd} rightBorder={false} flexVal={1}/></div>
                                       <div style={{ gridColumn: 'span 2' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">M M</div><StaticCombGrid count={2} value={row.mm} rightBorder={false} flexVal={1}/></div>
-                                      
-                                      {/* Time & Auth diperkecil font-nya agar tidak mendorong grid ke luar PDF */}
                                       <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col min-w-0">
                                         <div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">Time</div>
                                         <div className="flex-1 w-full flex items-center justify-center font-mono text-[10px] tracking-tighter font-extrabold text-black overflow-hidden">{row.t}</div>
@@ -1847,13 +1914,15 @@ const sendBulkBatchesToAPI = async () => {
                                       <div style={{ gridColumn: 'span 3' }} className="flex flex-col min-w-0">
                                         <div className="flex-1 flex border-b-[2px] border-black relative">
                                           <span className="w-10 border-r-[2px] border-black text-[11px] font-extrabold flex items-center justify-center bg-gray-50">Sign</span>
-                                          <div className="flex-1 relative bg-[#F4F7F5]">
-                                              {row.s && <img src={row.s} className="absolute inset-0 w-full h-full object-contain mix-blend-multiply p-0.5" style={{ filter: 'drop-shadow(0 0 1px black) contrast(200%)' }} />}
+                                          {/* DITAMBAHKAN overflow-hidden AGAR ZOOM TIDAK KELUAR KOTAK */}
+                                          <div className="flex-1 relative bg-[#F4F7F5] overflow-hidden">
+                                              {/* FILTER KHUSUS: Menggunakan filter kiri yang sukses + Scale(1.7) untuk nge-zoom tanda tangannya */}
+                                              {row.s && <img src={row.s} className="absolute inset-0 w-full h-full object-contain mix-blend-multiply" style={{ filter: 'grayscale(100%) contrast(1000%)', transform: 'scale(1.7)' }} />}
                                           </div>
                                         </div>
                                         <div className="flex-1 flex bg-gray-50/50">
                                           <span className="w-10 border-r-[2px] border-black text-[11px] font-extrabold flex items-center justify-center bg-gray-50">Auth.</span>
-                                          <div className="flex-1 w-full flex items-center justify-center bg-transparent text-center px-0.5 font-mono uppercase text-[9px] tracking-tighter text-black font-extrabold overflow-hidden">{row.a}</div>
+                                          <div className="flex-1 w-full flex items-center justify-center bg-transparent text-center px-0.5 font-mono uppercase text-[7px] tracking-tighter text-black font-extrabold overflow-hidden">{row.a}</div>
                                         </div>
                                       </div>
                                     </div>
