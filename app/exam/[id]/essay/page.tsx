@@ -58,6 +58,7 @@ const DrawPad = ({ value, onChange, className = "" }: any) => {
     setIsDrawing(true);
   };
 
+  
   const draw = (e: any) => {
     if (!isDrawing) return;
     const canvas = canvasRef.current;
@@ -250,6 +251,22 @@ export default function EssayPage({ params }: { params: Promise<{ id: string }> 
     fetchExamData();
   }, [examResultId, router]);
 
+  // Pasang pelapor otomatis saat halaman essay terbuka
+  useEffect(() => {
+    const laporMasukEssay = async () => {
+      // Pastikan 'resultId' disesuaikan dengan nama variabel ID Result di file Anda
+      await supabase
+        .from('exam_results')
+        .update({ current_section: 'ESSAY' }) 
+        .eq('id', examResultId); 
+    };
+
+    // Panggil fungsinya sekali saja saat halaman dimuat
+    if (examResultId) {
+      laporMasukEssay();
+    }
+    }, [examResultId]);
+
   // 2. Timer Countdown
   useEffect(() => {
     if (timeLeft <= 0 && !loading) return;
@@ -279,6 +296,7 @@ export default function EssayPage({ params }: { params: Promise<{ id: string }> 
   useEffect(() => {
     localStorage.setItem(`essay_draft_${examResultId}`, JSON.stringify(answers));
   }, [answers, examResultId]);
+
 
   // 5. Anti-Cheat Logic
   useEffect(() => {

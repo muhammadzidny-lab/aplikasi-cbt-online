@@ -51,6 +51,61 @@ function DataRow({ label, value }: { label: string, value: string }) {
 }
 
 // Dibungkus React.memo agar kebal dari efek Timer 1 Detik di komponen induk
+const CandidateAvatar = React.memo(({ personnelNo, onClick }: { personnelNo: string, onClick: (photo: string) => void }) => {
+  const [photo, setPhoto] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!personnelNo || personnelNo === 'N/A' || personnelNo === 'Unknown') return;
+
+    // 1. Cek apakah foto sudah ada di memori sementara browser
+    const cachedPhoto = sessionStorage.getItem(`photo_cache_${personnelNo}`);
+    if (cachedPhoto && cachedPhoto !== 'none') {
+      setPhoto(cachedPhoto);
+      return;
+    } else if (cachedPhoto === 'none') {
+      return; // Sudah pernah dicek dan memang tidak ada foto
+    }
+
+    // 2. Jika belum ada di memori, fetch HANYA foto untuk kandidat ini (Sekali Saja)
+    const fetchPhoto = async () => {
+      const { data } = await supabase
+        .from('candidates')
+        .select('photo')
+        .eq('personnel_no', personnelNo)
+        .single();
+
+      if (data && data.photo) {
+        setPhoto(data.photo);
+        try { sessionStorage.setItem(`photo_cache_${personnelNo}`, data.photo); } catch(e) {}
+      } else {
+        try { sessionStorage.setItem(`photo_cache_${personnelNo}`, 'none'); } catch(e) {}
+      }
+    };
+    
+    fetchPhoto();
+  }, [personnelNo]);
+
+  // Jika foto ada, tampilkan dan beri efek bisa di-klik untuk Pop-Up
+  if (photo) {
+    return (
+      <img 
+        src={photo} 
+        alt="Candidate" 
+        className="w-16 h-16 rounded-2xl object-cover border-2 border-[#d1d5db] shadow-sm cursor-pointer hover:scale-110 transition-transform" 
+        onClick={() => onClick(photo)} 
+      />
+    );
+  }
+
+  // Jika tidak ada foto / masih loading, tampilkan ikon default
+  return (
+    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#f3f4f6] to-[#e5e7eb] border-2 border-[#d1d5db] flex items-center justify-center text-[#9ca3af] shadow-inner">
+      <span className="text-2xl">👤</span>
+    </div>
+  );
+});
+
+// Dibungkus React.memo agar kebal dari efek Timer 1 Detik di komponen induk
 const AdminSignaturePad = React.memo(({ value, onChange }: { value: string, onChange: (val: string) => void }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const isDrawing = useRef(false)
@@ -337,7 +392,7 @@ export default function AdminDashboard() {
 
   const { data: sessionData } = await supabase
       .from('exam_results')
-      .select(`id, type_of_ac, kategori, subject, exam_no, status, started_at, score, cheat_warnings, final_passed, email_sent, essay_answers, candidates (name, email, personnel_no, unit, rating_sought, exam_date, dgac_amel_no, dgac_rating, ga_auth_no, ga_rating)`)
+      .select(`id, current_section, type_of_ac, kategori, subject, exam_no, status, started_at, score, cheat_warnings, final_passed, email_sent, essay_answers, candidates (name, email, personnel_no, unit, rating_sought, exam_date, dgac_amel_no, dgac_rating, ga_auth_no, ga_rating)`)
       .order('started_at', { ascending: false })
 
     if (sessionData) setSessions(sessionData)
@@ -875,8 +930,25 @@ const sendBulkBatchesToAPI = async () => {
     let displayRegWrong = actualRegWrong; let displayTotalWrong = actualAircraftWrong + actualRegWrong;
 
     if (isPassFinal && !isPassDefault) {
-       displayScore = 76; displayTotalWrong = totalQuestions === 100 ? 24 : 12; 
-       displayRegWrong = Math.min(actualRegWrong, Math.floor(displayTotalWrong / 4));
+       // 1. Tentukan nilai 76 atau 78 agar sama dengan yang akan muncul di dashboard
+       displayScore = (actualScore % 2 === 0) ? 76 : 78; 
+       
+       // 2. Hitung total salah proporsional dengan jumlah soal (agar matematika tetap logis)
+       displayTotalWrong = Math.round(totalQuestions * ((100 - displayScore) / 100));
+       
+       // 3. Buat variasi salah menggunakan algoritma modulus dari actualScore agar hasilnya acak tapi konsisten per-kandidat
+       const randomSeed = (actualScore + displayTotalWrong) % 4; 
+       
+       // Pembagian bervariasi (tidak lagi melulu 9:3)
+       if (randomSeed === 0) displayRegWrong = 2;
+       else if (randomSeed === 1) displayRegWrong = 4;
+       else if (randomSeed === 2) displayRegWrong = 1;
+       else displayRegWrong = 3;
+       
+       // Jika total soalnya 100 (bukan 50), kesalahan dikali 2 agar proporsional
+       if (totalQuestions > 60) displayRegWrong *= 2;
+
+       // Sisa dari total kesalahan otomatis masuk ke bagian Aircraft System
        displayAircraftWrong = displayTotalWrong - displayRegWrong;
     }
 
@@ -1767,176 +1839,176 @@ const sendBulkBatchesToAPI = async () => {
                           </div>
                         </div>
                       ))}
-
-                      {/* JAWABAN Q5 (AML) - KEMBALI KE FORMAT FULL WIDTH ASLI */}
-                      {/* print:mt-12 ditambahkan agar judul tidak mepet atas di Halaman 2 */}
-                      <div className="w-full mt-4 print:mt-12">
-                        <p className="font-bold text-[11px] mb-2 print:mb-6 text-gray-700">5. Simulation Task (AML Rectification):</p>
+                      
+                      {/* ========================================= */}
+                      {/* JAWABAN Q5 (AML) - HALAMAN 2 & 3          */}
+                      {/* ========================================= */}
+                      <div className="w-full mt-6 print:break-before-page print:pt-1">
+                        <p className="font-bold text-[11px] mb-3 text-gray-700">5. Simulation Task (AML Rectification):</p>
                         
-                        {/* ZOOM DIHAPUS, kembali normal */}
-                        <div className="flex flex-col w-full pb-12">
+                        <div className="flex flex-col w-full">
                           {resExamResult?.essay_answers?.aml?.map((data: any, idx: number) => (
                             <div 
                               key={`aml-ans-${idx}`} 
-                              /* KEMBALI MENGGUNAKAN w-full, tapi logika jarak & halamannya tetap kita pakai */
-                              className={`w-full border-[3px] border-black bg-white text-black font-sans text-[10px] leading-tight select-none flex flex-col break-inside-avoid shadow-sm
-                                ${idx === 0 ? 'mt-0' : ''}
-                                ${idx === 1 ? 'mt-8' : ''}
-                                ${idx === 2 ? 'mt-8 print:break-before-page print:mt-[120px]' : ''}
+                              /* LOGIKA HALAMAN & JARAK KHUSUS CETAK PDF */
+                              className={`w-full 
+                                ${idx === 0 ? 'mb-6' : ''}
+                                ${idx === 1 ? 'mb-6' : ''}
+                                ${idx === 2 ? 'print:break-before-page print:pt-12 mb-0' : ''}
                               `}
                             >
-                              
-                              {/* --- ROW 1 & 2 HEADER --- */}
-                              {/* (Biarkan kode ke bawahnya tetap sama) */}
-                              <div className="flex w-full border-b-[3px] border-black h-[46px]">
-                                <div className="w-[55%] flex border-r-[3px] border-black">
-                                  <div className="flex-[4] border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">FLIGHT. No</div><StaticCombGrid count={4} value={data.flightNo} /></div>
-                                  <div className="flex-[3] border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">DEP. STA</div><StaticCombGrid count={3} value={data.depSta} /></div>
-                                  <div className="flex-[3] border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">A/C. REG</div><StaticCombGrid count={3} value={data.acReg} /></div>
-                                  <div className="flex-[6] border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">D D M M Y Y</div><StaticCombGrid count={6} value={data.date} /></div>
-                                  <div className="flex-[4] flex flex-col relative bg-gray-50">
-                                    <div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5 uppercase">SEQ. No</div>
-                                    <div className="flex-1 flex relative bg-white">
-                                      <div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div>
-                                      <div className="absolute inset-0 flex pointer-events-none z-10"><div className="flex-1 flex items-center justify-center font-extrabold text-[14px] bg-gray-100 border-r-[1.5px] border-black">0</div><div className="flex-1 flex items-center justify-center font-extrabold text-[14px] bg-gray-100 border-r-[1.5px] border-black">{idx}</div><div className="flex-1 flex items-center justify-center font-extrabold text-black font-mono text-[14px] border-r-[1.5px] border-black">{data.seqExt?.[0]||''}</div><div className="flex-1 flex items-center justify-center font-extrabold text-black font-mono text-[14px]">{data.seqExt?.[1]||''}</div></div>
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="w-[45%] flex">
-                                  <div className="flex-[16] border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">PART NUMBER</div><StaticCombGrid count={16} value={data.partNo} /></div>
-                                  <div className="flex-[4] border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">M.E.L.R.I</div><StaticSectionInputGrid count={4} value={data.melri} placeholders={['A','B','C','D']} /></div>
-                                  <div className="flex-[2] border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">EXTS</div><StaticSectionInputGrid count={2} value={data.exts} placeholders={['B','C']} /></div>
-                                  <div className="flex-[4] flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">FIC</div><StaticCombGrid count={4} value={data.fic} /></div>
-                                </div>
-                              </div>
-
-                              {/* --- ROW 2: SUBJECT & SERIAL --- */}
-                              <div className="flex w-full border-b-[3px] border-black h-[44px]">
-                                <div className="w-[55%] border-r-[3px] border-black relative flex items-center px-3 bg-white">
-                                  <div className="text-[11px] font-extrabold mr-2">Subject:</div>
-                                  <div className="flex-1 h-full flex items-center bg-transparent font-extrabold text-black text-[13px] uppercase pb-0.5 truncate">{data.subject}</div>
-                                </div>
-                                <div className="w-[45%] flex">
-                                  <div className="flex-[2] border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">POS</div><StaticCombGrid count={2} value={data.pos} /></div>
-                                  <div className="flex-[11] border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">SERIAL No. IN</div><StaticCombGrid count={11} value={data.serialIn} /></div>
-                                  <div className="flex-[11] flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">SERIAL No. OUT</div><StaticCombGrid count={11} value={data.serialOut} /></div>
-                                </div>
-                              </div>
-
-                              {/* --- ROW 3: COMPLAINT & ACTION --- */}
-                              <div className="flex h-[210px] border-b-[3px] border-black bg-white">
-                                <div className="w-[55%] border-r-[3px] border-black flex">
-                                  <div className="w-8 border-r-[2px] border-black flex items-center justify-center bg-gray-50">
-                                    <span className="-rotate-90 whitespace-nowrap text-[13px] font-extrabold tracking-widest text-black uppercase">Complaint</span>
-                                  </div>
-                                  <div className="flex-1 relative bg-[repeating-linear-gradient(transparent,transparent_34px,#d1d5db_34px,#d1d5db_35px)] bg-[size:100%_35px]">
-                                    <div className="absolute inset-0 w-full h-full bg-transparent font-extrabold text-black uppercase text-[12px] leading-[35px] pt-[7px] pl-[8px] pr-[4px] whitespace-pre-wrap">{data.complaint}</div>
-                                  </div>
-                                </div>
-                                <div className="w-[45%] flex">
-                                  <div className="flex-1 flex border-r-[3px] border-black">
-                                    <div className="w-8 border-r-[2px] border-black flex items-center justify-center bg-gray-50">
-                                      <span className="-rotate-90 whitespace-nowrap text-[13px] font-extrabold tracking-widest text-black uppercase">Action</span>
-                                    </div>
-                                    <div className="flex-1 relative bg-[repeating-linear-gradient(transparent,transparent_34px,#d1d5db_34px,#d1d5db_35px)] bg-[size:100%_35px]">
-                                      <div className="absolute inset-0 w-full h-full bg-transparent font-extrabold text-black uppercase text-[12px] leading-[35px] pt-[7px] pl-[8px] pr-[4px] whitespace-pre-wrap">{data.action}</div>
-                                    </div>
-                                  </div>
-                                  <div className="w-10 flex items-center justify-center bg-gray-50">
-                                    <span className="-rotate-90 whitespace-nowrap font-black text-lg tracking-widest text-black">SNAG</span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* --- ROW 4: BOTTOM MATRIX --- */}
-                              <div className="flex h-[200px]">
+                              <div className="w-full border-[3px] border-black bg-white text-black font-sans text-[10px] leading-tight select-none flex flex-col break-inside-avoid shadow-sm">
                                 
-                                {/* MATRIX KIRI BAWAH */}
-                                <div className="w-[65%] grid border-r-[3px] border-black" style={{ gridTemplateColumns: 'repeat(32, minmax(0, 1fr))' }}>
-                                  <div style={{ gridColumn: 'span 10' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col relative bg-[#F4F7F5]">
-                                    <span className="text-[11px] text-center py-[4px] font-extrabold border-b-[2px] border-black">Sign</span>
-                                    <div className="flex-1 relative">
-                                        <StaticDrawPad value={data.sign} />
+                                {/* --- ROW 1 & 2 HEADER --- */}
+                                <div className="flex w-full">
+                                  <div className="w-[55%] flex flex-col border-r-[3px] border-black">
+                                    <div className="grid h-[46px] border-b-[3px] border-black" style={{ gridTemplateColumns: 'repeat(20, minmax(0, 1fr))' }}>
+                                      <div style={{ gridColumn: 'span 4' }} className="border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">FLIGHT. No</div><StaticCombGrid count={4} value={data.flightNo} /></div>
+                                      <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">DEP. STA</div><StaticCombGrid count={3} value={data.depSta} /></div>
+                                      <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">A/C. REG</div><StaticCombGrid count={3} value={data.acReg} /></div>
+                                      <div style={{ gridColumn: 'span 6' }} className="border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">D D M M Y Y</div><StaticCombGrid count={6} value={data.date} /></div>
+                                      <div style={{ gridColumn: 'span 4' }} className="flex flex-col relative bg-gray-50">
+                                        <div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5 uppercase">SEQ. No</div>
+                                        <div className="flex-1 flex relative bg-white">
+                                          <div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div>
+                                          <div className="absolute inset-0 flex pointer-events-none z-10"><div className="flex-1 flex items-center justify-center font-extrabold text-[14px] bg-gray-100 border-r-[1.5px] border-black">0</div><div className="flex-1 flex items-center justify-center font-extrabold text-[14px] bg-gray-100 border-r-[1.5px] border-black">{idx}</div><div className="flex-1 flex items-center justify-center font-extrabold text-black font-mono text-[14px] border-r-[1.5px] border-black">{data.seqExt?.[0]||''}</div><div className="flex-1 flex items-center justify-center font-extrabold text-black font-mono text-[14px]">{data.seqExt?.[1]||''}</div></div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="h-[44px] border-b-[3px] border-black relative flex items-center px-3 bg-white">
+                                      <div className="text-[11px] font-extrabold mr-2">Subject:</div>
+                                      <div className="flex-1 h-full flex items-center bg-transparent font-extrabold text-black text-[13px] uppercase truncate">{data.subject}</div>
                                     </div>
                                   </div>
-                                  <div style={{ gridColumn: 'span 4' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">FLIGHT TIME</div><StaticCombGrid count={4} value={data.flightTime} /></div>
-                                  <div style={{ gridColumn: 'span 11' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">HYD. REFILL</div><StaticSectionInputGrid count={4} value={data.hyd} placeholders={['S1','S2','S3','S4']} /></div>
-                                  <div style={{ gridColumn: 'span 7' }} className="border-b-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">OIL REFILL</div><StaticSectionInputGrid count={5} value={data.oil} placeholders={['E1','E2','E3','E4','APU']} /></div>
 
-                                  <div style={{ gridColumn: 'span 10' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col">
-                                    {idx === 0 ? (
-                                      <>
-                                        <div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px] bg-gray-100">AUTO LAND STATUS</div>
-                                        <div className="flex-1 flex relative">
-                                          <div className="flex-[0.8] bg-gray-300 border-r-[1.5px] border-black"></div>
-                                          <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">YES</div>
-                                          <div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black border-r-[1.5px] border-black">{data.autoYes?.[0]||''}</div>
-                                          <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">NO</div>
-                                          <div className="flex-[2] relative border-r-[1.5px] border-black flex"><div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div><div className="absolute inset-0 flex pointer-events-none"><div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black">{data.autoNo?.[0]||''}</div><div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black">{data.autoNo?.[1]||''}</div></div></div>
-                                          <div className="flex-[0.8] bg-gray-300 border-r-[1.5px] border-black"></div>
-                                          <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">CAT II</div>
-                                          <div className="flex-[2] relative border-r-[1.5px] border-black flex"><div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div><div className="absolute inset-0 flex pointer-events-none"><div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black">{data.autoCat2?.[0]||''}</div><div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black">{data.autoCat2?.[1]||''}</div></div></div>
-                                          <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">III</div>
-                                          <div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black border-r-[1.5px] border-black">{data.autoCat3?.[0]||''}</div>
-                                          <div className="flex-1 bg-gray-300"></div>
-                                          
-                                          <StaticDrawPad value={data.autoYes} />
-                                        </div>
-                                      </>
-                                    ) : (
-                                      <><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">COMPLAINT (IMM CODE)</div><StaticCombGrid count={10} value={data.complaintImm} /></>
-                                    )}
+                                  {/* KANAN ATAS (Grid 26 Unit) */}
+                                  <div className="w-[45%] flex flex-col">
+                                    <div className="grid h-[46px] border-b-[3px] border-black" style={{ gridTemplateColumns: 'repeat(26, minmax(0, 1fr))' }}>
+                                      {/* Semua judul di baris ini dikunci tingginya di h-[18px] agar garis bawahnya rata sejajar */}
+                                      <div style={{ gridColumn: 'span 16' }} className="border-r-[2px] border-black flex flex-col"><div className="h-[18px] flex items-center justify-center text-[11px] font-extrabold border-b-[2px] border-black">PART NUMBER</div><StaticCombGrid count={16} value={data.partNo} /></div>
+                                      <div style={{ gridColumn: 'span 4' }} className="border-r-[2px] border-black flex flex-col"><div className="h-[18px] flex items-center justify-center text-[9px] tracking-tighter font-extrabold border-b-[2px] border-black">M.E.L.R.I</div><StaticSectionInputGrid count={4} value={data.melri} placeholders={['A','B','C','D']} /></div>
+                                      <div style={{ gridColumn: 'span 2' }} className="border-r-[2px] border-black flex flex-col"><div className="h-[18px] flex items-center justify-center text-[9px] tracking-tighter font-extrabold border-b-[2px] border-black">EXTS</div><StaticSectionInputGrid count={2} value={data.exts} placeholders={['B','C']} /></div>
+                                      <div style={{ gridColumn: 'span 4' }} className="flex flex-col"><div className="h-[18px] flex items-center justify-center text-[11px] font-extrabold border-b-[2px] border-black">FIC</div><StaticCombGrid count={4} value={data.fic} /></div>
+                                    </div>
+                                    <div className="grid h-[44px] border-b-[3px] border-black" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
+                                      <div style={{ gridColumn: 'span 2' }} className="border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">POS</div><StaticCombGrid count={2} value={data.pos} /></div>
+                                      <div style={{ gridColumn: 'span 11' }} className="border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">SERIAL No. IN</div><StaticCombGrid count={11} value={data.serialIn} /></div>
+                                      <div style={{ gridColumn: 'span 11' }} className="flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-0.5">SERIAL No. OUT</div><StaticCombGrid count={11} value={data.serialOut} /></div>
+                                    </div>
                                   </div>
-                                  <div style={{ gridColumn: 'span 4' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">ETOPS</div><StaticSectionInputGrid count={4} value={data.etops} placeholders={['NE','90','120','180']} /></div>
-                                  <div style={{ gridColumn: 'span 18' }} className="border-b-[2px] border-black flex flex-col"><StaticCombGrid count={18} /></div>
-
-                                  <div style={{ gridColumn: 'span 14' }} className="border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">WORK ORDER NUMBER</div><StaticCombGrid count={14} value={data.workOrder} /></div>
-                                  <div style={{ gridColumn: 'span 11' }} className="border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">MS. NUMBER</div><StaticCombGrid count={11} value={data.msNumber} /></div>
-                                  <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">INSP</div><StaticCombGrid count={3} value={data.insp} /></div>
-                                  <div style={{ gridColumn: 'span 4' }} className="flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">MHRS</div><StaticCombGrid count={4} value={data.mhrs} /></div>
                                 </div>
 
-                                {/* MATRIX KANAN BAWAH */}
-                                <div className="w-[35%] flex flex-col min-w-0">
-                                  {[
-                                    { label: "Action STA", st: data.actionSta, stCount: 3, dd: data.actionDd, mm: data.actionMm, t: data.actionTime, s: data.actionSign, a: data.actionAuth },
-                                    { label: "Release STA", st: data.releaseSta, stCount: 3, dd: data.releaseDd, mm: data.releaseMm, t: data.releaseTime, s: data.releaseSign, a: data.releaseAuth },
-                                    { label: "R.I.I.", st: data.rii, stCount: 1, dd: data.riiDd, mm: data.riiMm, t: data.riiTime, s: data.riiSign, a: data.riiAuth, isLast: true }
-                                  ].map((row: any, i: number) => (
-                                    <div key={i} className={`grid h-full ${!row.isLast ? 'border-b-[2px] border-black' : ''}`} style={{ gridTemplateColumns: 'repeat(13, minmax(0, 1fr))' }}>
-                                      <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">{row.label}</div><StaticCombGrid count={row.stCount} value={row.st} rightBorder={false} flexVal={1}/></div>
-                                      <div style={{ gridColumn: 'span 2' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">D D</div><StaticCombGrid count={2} value={row.dd} rightBorder={false} flexVal={1}/></div>
-                                      <div style={{ gridColumn: 'span 2' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">M M</div><StaticCombGrid count={2} value={row.mm} rightBorder={false} flexVal={1}/></div>
-                                      <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col min-w-0">
-                                        <div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">Time</div>
-                                        <div className="flex-1 w-full flex items-center justify-center font-mono text-[10px] tracking-tighter font-extrabold text-black overflow-hidden">{row.t}</div>
+                                {/* --- BAGIAN TENGAH: TEXTAREA --- */}
+                                <div className="flex h-[210px] border-b-[3px] border-black">
+                                  <div className="w-[55%] border-r-[3px] border-black flex">
+                                    <div className="w-8 border-r-[2px] border-black flex items-center justify-center bg-gray-50"><span className="-rotate-90 whitespace-nowrap text-[13px] font-extrabold tracking-widest text-black">Complaint</span></div>
+                                    <div className="flex-1 relative bg-[repeating-linear-gradient(transparent,transparent_34px,#000_34px,#000_35px)] bg-[size:100%_35px]">
+                                      <div className="absolute inset-0 w-full h-full bg-transparent font-extrabold text-black uppercase text-[12px] leading-[35px] pt-[7px] pl-[8px] pr-[4px] whitespace-pre-wrap">{data.complaint}</div>
+                                    </div>
+                                  </div>
+                                  <div className="w-[45%] flex">
+                                    <div className="flex-1 flex border-r-[3px] border-black">
+                                      <div className="w-8 border-r-[2px] border-black flex items-center justify-center bg-gray-50"><span className="-rotate-90 whitespace-nowrap text-[13px] font-extrabold tracking-widest text-black">Action</span></div>
+                                      <div className="flex-1 relative bg-[repeating-linear-gradient(transparent,transparent_34px,#000_34px,#000_35px)] bg-[size:100%_35px]">
+                                        <div className="absolute inset-0 w-full h-full bg-transparent font-extrabold text-black uppercase text-[12px] leading-[35px] pt-[7px] pl-[8px] pr-[4px] whitespace-pre-wrap">{data.action}</div>
                                       </div>
-                                      <div style={{ gridColumn: 'span 3' }} className="flex flex-col min-w-0">
-                                        <div className="flex-1 flex border-b-[2px] border-black relative">
-                                          <span className="w-10 border-r-[2px] border-black text-[11px] font-extrabold flex items-center justify-center bg-gray-50">Sign</span>
-                                          {/* DITAMBAHKAN overflow-hidden AGAR ZOOM TIDAK KELUAR KOTAK */}
-                                          <div className="flex-1 relative bg-[#F4F7F5] overflow-hidden">
-                                              {/* FILTER KHUSUS: Menggunakan filter kiri yang sukses + Scale(1.7) untuk nge-zoom tanda tangannya */}
-                                              {row.s && <img src={row.s} className="absolute inset-0 w-full h-full object-contain mix-blend-multiply" style={{ filter: 'grayscale(100%) contrast(1000%)', transform: 'scale(1.7)' }} />}
+                                    </div>
+                                    <div className="w-10 flex items-center justify-center bg-gray-50">
+                                      <span className="-rotate-90 whitespace-nowrap font-black text-lg tracking-widest text-black">SNAG</span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* --- BAGIAN BAWAH: MATRIX SEJAJAR SEMPURNA --- */}
+                                <div className="flex h-[200px]">
+                                  
+                                  {/* MATRIX KIRI BAWAH */}
+                                  <div className="w-[65%] grid border-r-[3px] border-black" style={{ gridTemplateColumns: 'repeat(32, minmax(0, 1fr))' }}>
+                                    <div style={{ gridColumn: 'span 10' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col relative bg-[#F4F7F5]">
+                                      <span className="text-[11px] text-center py-[4px] font-extrabold border-b-[2px] border-black">Sign</span>
+                                      <div className="flex-1 relative">
+                                          {data.sign && <img src={data.sign} className="absolute inset-0 w-full h-full object-contain mix-blend-multiply p-1" style={{ filter: 'grayscale(100%) contrast(1000%) drop-shadow(0 0 1px black)' }} />}
+                                      </div>
+                                    </div>
+                                    <div style={{ gridColumn: 'span 4' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">FLIGHT TIME</div><StaticCombGrid count={4} value={data.flightTime} /></div>
+                                    <div style={{ gridColumn: 'span 11' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">HYD. REFILL</div><StaticSectionInputGrid count={4} value={data.hyd} placeholders={['S1','S2','S3','S4']} /></div>
+                                    <div style={{ gridColumn: 'span 7' }} className="border-b-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">OIL REFILL</div><StaticSectionInputGrid count={5} value={data.oil} placeholders={['E1','E2','E3','E4','APU']} /></div>
+
+                                    <div style={{ gridColumn: 'span 10' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col">
+                                      {idx === 0 ? (
+                                        <>
+                                          <div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px] bg-gray-100">AUTO LAND STATUS</div>
+                                          <div className="flex-1 flex relative">
+                                            <div className="flex-[0.8] bg-gray-300 border-r-[1.5px] border-black"></div>
+                                            <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">YES</div>
+                                            <div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black border-r-[1.5px] border-black">{data.autoYes?.[0]||''}</div>
+                                            <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">NO</div>
+                                            <div className="flex-[2] relative border-r-[1.5px] border-black flex"><div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div><div className="absolute inset-0 flex items-center justify-center font-mono font-extrabold text-[14px] text-black"><div className="flex-1 text-center border-r-[1.5px] border-black h-full flex items-center justify-center">{data.autoNo?.[0]||''}</div><div className="flex-1 text-center h-full flex items-center justify-center">{data.autoNo?.[1]||''}</div></div></div>
+                                            <div className="flex-[0.8] bg-gray-300 border-r-[1.5px] border-black"></div>
+                                            <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">CAT II</div>
+                                            <div className="flex-[2] relative border-r-[1.5px] border-black flex"><div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div><div className="absolute inset-0 flex items-center justify-center font-mono font-extrabold text-[14px] text-black"><div className="flex-1 text-center border-r-[1.5px] border-black h-full flex items-center justify-center">{data.autoCat2?.[0]||''}</div><div className="flex-1 text-center h-full flex items-center justify-center">{data.autoCat2?.[1]||''}</div></div></div>
+                                            <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">III</div>
+                                            <div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black border-r-[1.5px] border-black">{data.autoCat3?.[0]||''}</div>
+                                            <div className="flex-1 bg-gray-300"></div>
+                                            
+                                            {data.autoYes && data.autoYes.startsWith('data:image') && <img src={data.autoYes} className="absolute inset-0 w-full h-full object-contain mix-blend-multiply" style={{ filter: 'grayscale(100%) contrast(1000%) drop-shadow(0 0 1px black)' }} />}
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">COMPLAINT (IMM CODE)</div><StaticCombGrid count={10} value={data.complaintImm} /></>
+                                      )}
+                                    </div>
+                                    <div style={{ gridColumn: 'span 4' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">ETOPS</div><StaticSectionInputGrid count={4} value={data.etops} placeholders={['NE','90','120','180']} /></div>
+                                    <div style={{ gridColumn: 'span 18' }} className="border-b-[2px] border-black flex flex-col"><StaticCombGrid count={18} /></div>
+
+                                    <div style={{ gridColumn: 'span 14' }} className="border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">WORK ORDER NUMBER</div><StaticCombGrid count={14} value={data.workOrder} /></div>
+                                    <div style={{ gridColumn: 'span 11' }} className="border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">MS. NUMBER</div><StaticCombGrid count={11} value={data.msNumber} /></div>
+                                    <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">INSP</div><StaticCombGrid count={3} value={data.insp} /></div>
+                                    <div style={{ gridColumn: 'span 4' }} className="flex flex-col"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">MHRS</div><StaticCombGrid count={4} value={data.mhrs} /></div>
+                                  </div>
+
+                                  {/* MATRIX KANAN BAWAH */}
+                                  <div className="w-[35%] flex flex-col min-w-0">
+                                    {[
+                                      { label: "Action STA", st: data.actionSta, stCount: 3, dd: data.actionDd, mm: data.actionMm, t: data.actionTime, s: data.actionSign, a: data.actionAuth },
+                                      { label: "Release STA", st: data.releaseSta, stCount: 3, dd: data.releaseDd, mm: data.releaseMm, t: data.releaseTime, s: data.releaseSign, a: data.releaseAuth },
+                                      { label: "R.I.I.", st: data.rii, stCount: 1, dd: data.riiDd, mm: data.riiMm, t: data.riiTime, s: data.riiSign, a: data.riiAuth, isLast: true }
+                                    ].map((row: any, i: number) => (
+                                      <div key={i} className={`grid h-full ${!row.isLast ? 'border-b-[2px] border-black' : ''}`} style={{ gridTemplateColumns: 'repeat(13, minmax(0, 1fr))' }}>
+                                        <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">{row.label}</div><StaticCombGrid count={row.stCount} value={row.st} rightBorder={false} flexVal={1}/></div>
+                                        <div style={{ gridColumn: 'span 2' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">D D</div><StaticCombGrid count={2} value={row.dd} rightBorder={false} flexVal={1}/></div>
+                                        <div style={{ gridColumn: 'span 2' }} className="border-r-[2px] border-black flex flex-col min-w-0"><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">M M</div><StaticCombGrid count={2} value={row.mm} rightBorder={false} flexVal={1}/></div>
+                                        <div style={{ gridColumn: 'span 3' }} className="border-r-[2px] border-black flex flex-col min-w-0">
+                                          <div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">Time</div>
+                                          <div className="flex-1 w-full flex items-center justify-center font-mono text-[10px] tracking-tighter font-extrabold text-black overflow-hidden">{row.t}</div>
+                                        </div>
+                                        <div style={{ gridColumn: 'span 3' }} className="flex flex-col min-w-0">
+                                          <div className="flex-1 flex border-b-[2px] border-black relative">
+                                            <span className="w-10 border-r-[2px] border-black text-[11px] font-extrabold flex items-center justify-center bg-gray-50">Sign</span>
+                                            <div className="flex-1 relative bg-[#F4F7F5] overflow-hidden">
+                                                {row.s && <img src={row.s} className="absolute inset-0 w-full h-full object-contain mix-blend-multiply" style={{ filter: 'grayscale(100%) contrast(1000%)', transform: 'scale(1.7)' }} />}
+                                            </div>
+                                          </div>
+                                          <div className="flex-1 flex bg-gray-50/50">
+                                            <span className="w-10 border-r-[2px] border-black text-[11px] font-extrabold flex items-center justify-center bg-gray-50">Auth.</span>
+                                            <div className="flex-1 w-full flex items-center justify-center bg-transparent text-center px-0.5 font-mono uppercase text-[7px] tracking-tighter text-black font-extrabold overflow-hidden">{row.a}</div>
                                           </div>
                                         </div>
-                                        <div className="flex-1 flex bg-gray-50/50">
-                                          <span className="w-10 border-r-[2px] border-black text-[11px] font-extrabold flex items-center justify-center bg-gray-50">Auth.</span>
-                                          <div className="flex-1 w-full flex items-center justify-center bg-transparent text-center px-0.5 font-mono uppercase text-[7px] tracking-tighter text-black font-extrabold overflow-hidden">{row.a}</div>
-                                        </div>
                                       </div>
-                                    </div>
-                                  ))}
-                                </div>
+                                    ))}
+                                  </div>
 
+                                </div>
                               </div>
                             </div>
                           ))}
                         </div>
                       </div>
 
-                      {/* JAWABAN Q6 */}
-                      <div className="break-inside-avoid">
+                      {/* ========================================= */}
+                      {/* JAWABAN Q6 - HALAMAN 3                    */}
+                      {/* ========================================= */}
+                      <div className="break-inside-avoid mt-8">
                         <p className="font-bold text-[11px] mb-1 text-gray-700">6. Answer Q6 (Job Card Description):</p>
                         <div className="w-full p-3 border border-gray-300 bg-gray-50 text-black whitespace-pre-wrap font-medium text-[11px] leading-relaxed shadow-inner rounded">
                           {resExamResult?.essay_answers?.q6 || <span className="text-gray-400 italic">No Answer Provided</span>}
@@ -2029,9 +2101,62 @@ const sendBulkBatchesToAPI = async () => {
             <div className="flex flex-col xl:flex-row gap-4 items-center justify-between bg-[#f9fafb] p-4 rounded-2xl border border-[#e5e7eb]"><div className="relative w-full xl:w-auto flex-1 max-w-md"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl">🔍</span><input type="text" placeholder="Search Name or Pers No..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 rounded-xl border border-[#d1d5db] focus:outline-none focus:border-[#009CB4] text-sm font-bold text-[#002561] placeholder-gray-400 shadow-inner" /></div><div className="flex flex-col md:flex-row items-center gap-4 w-full xl:w-auto"><div className="flex items-center gap-3 w-full md:w-auto bg-white border border-[#d1d5db] px-4 py-2 rounded-xl shadow-sm"><span className="text-lg">📅</span><input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="focus:outline-none text-sm font-bold text-[#002561] uppercase cursor-pointer" />{dateFilter && (<button onClick={() => setDateFilter('')} className="text-[10px] bg-red-100 text-red-600 font-bold px-2 py-1 rounded-md hover:bg-red-200 transition-all uppercase tracking-wider">Clear</button>)}</div><div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">{['ALL', 'LIVE', 'PASSED', 'FAILED'].map(status => (<button key={status} onClick={() => setStatusFilter(status)} className={`px-5 py-2.5 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all whitespace-nowrap border-2 ${statusFilter === status ? status === 'LIVE' ? 'bg-[#f59e0b] text-white border-[#f59e0b] shadow-[0_4px_10px_rgba(245,158,11,0.3)]' : status === 'PASSED' ? 'bg-[#10b981] text-white border-[#10b981] shadow-[0_4px_10px_rgba(16,185,129,0.3)]' : status === 'FAILED' ? 'bg-[#ef4444] text-white border-[#ef4444] shadow-[0_4px_10px_rgba(239,68,68,0.3)]' : 'bg-[#002561] text-white border-[#002561] shadow-[0_4px_10px_rgba(0,37,97,0.3)]' : 'bg-white border-[#e5e7eb] text-[#6b7280] hover:bg-gray-100'}`}>{status}</button>))}</div></div></div>
           </div>
           <div className="overflow-x-auto w-full">
-            <table className="w-full text-left text-sm whitespace-nowrap"><thead className="bg-[#f9fafb]/50 text-[#002561] border-b border-[#e5e7eb] text-xs uppercase tracking-wider font-bold"><tr><th className="p-5 pl-8 w-32">Photo / CCTV</th><th className="p-5 w-64 border-r border-[#e5e7eb]">Candidate Info</th><th className="p-5 pl-8">Exam Modules & Results</th></tr></thead><tbody className="divide-y divide-[#e5e7eb]">{groupedSessions.length === 0 ? (<tr><td colSpan={3} className="p-8 text-center text-[#9ca3af] font-medium tracking-wide">No participants match your search criteria.</td></tr>) : groupedSessions.map((group: any, index: number) => {
+            <table className="w-full text-left text-sm whitespace-nowrap"><thead className="bg-[#f9fafb]/50 text-[#002561] border-b border-[#e5e7eb] text-xs uppercase tracking-wider font-bold"><tr><th className="p-5 pl-8 w-32">Photo</th><th className="p-5 w-64 border-r border-[#e5e7eb]">Candidate Info</th><th className="p-5 pl-8">Exam Modules & Results</th></tr></thead><tbody className="divide-y divide-[#e5e7eb]">{groupedSessions.length === 0 ? (<tr><td colSpan={3} className="p-8 text-center text-[#9ca3af] font-medium tracking-wide">No participants match your search criteria.</td></tr>) : groupedSessions.map((group: any, index: number) => {
                   const cand = group.candidate; const candName = cand?.name || 'Unknown'; const candNo = cand?.personnel_no || 'N/A'; const candEmail = cand?.email || 'No Email'; const candUnit = cand?.unit || 'No Unit'; const activeSession = group.exams.find((s: any) => s.status !== 'COMPLETED');
-                  return (<tr key={index} className="hover:bg-blue-50/10 transition-colors"><td className="p-5 pl-8 align-top"><div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#f3f4f6] to-[#e5e7eb] border-2 border-[#d1d5db] flex items-center justify-center text-[#9ca3af] shadow-inner"><span className="text-2xl">👤</span></div></td><td className="p-5 align-top border-r border-[#e5e7eb]"><div className="flex flex-col"><span className="font-black uppercase text-[#002561] text-sm mb-1">{candName}</span><span className="text-[#009CB4] text-[10px] font-black tracking-widest px-2 py-0.5 bg-[#009CB4]/10 rounded border border-[#009CB4]/20 w-fit mb-1.5">ID: {candNo}</span><span className="text-[11px] text-[#6b7280] font-medium">{candEmail}</span><span className="text-[11px] font-black text-[#4b5563] tracking-widest uppercase mt-0.5">{candUnit}</span></div></td><td className="p-0 align-top"><div className="flex flex-col divide-y divide-[#f3f4f6]">{group.exams.map((session: any) => { const isPassed = session.final_passed !== null ? session.final_passed : (session.score >= 75); const warnings = session.cheat_warnings || 0; return (<div key={session.id} className="flex flex-wrap xl:flex-nowrap items-center justify-between p-5 pl-8 hover:bg-white transition-colors gap-4"><div className="w-full xl:w-1/3 flex flex-col gap-1"><span className="font-bold text-[#1f2937] text-sm">{session.type_of_ac || '-'}</span><span className="text-[10px] text-[#6b7280] font-bold uppercase tracking-wider">{session.kategori || '-'} • {session.subject} #{session.exam_no}</span></div><div className="w-full xl:w-1/3 flex flex-col items-start gap-1.5">{session.status === 'COMPLETED' ? (<><div className="flex items-center gap-2"><span className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded border border-emerald-200 text-[10px] font-black uppercase tracking-widest">Finished</span><span className="font-black text-[#002561] text-xs">Score: {session.score}</span></div><span className="text-[10px] font-bold text-[#9ca3af]">Time: 00:00</span></>) : (<><div className="flex items-center gap-2"><span className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 rounded border border-amber-200 text-[10px] font-black uppercase tracking-widest animate-pulse"><span className="w-2 h-2 inline-block rounded-full bg-[#f59e0b]"></span> Progress</span><span className="font-bold text-[#6b7280] text-xs">Score: {session.score}</span></div><span className="text-[10px] font-bold text-[#2563eb] flex items-center gap-1"><span className="text-sm">⏳</span> {getRemainingTime(session.started_at)} remaining</span></>)}{warnings > 0 && (<span className="px-2 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded text-[9px] font-bold tracking-wider flex items-center gap-1 shadow-sm animate-pulse">⚠️ Violations: {warnings}/5</span>)}</div><div className="w-full xl:w-1/3 flex items-center justify-end gap-3">{session.status === 'COMPLETED' ? (<div className="flex items-center gap-1 mr-2"><div className={`px-3 py-1 text-[11px] font-black tracking-widest uppercase rounded border shadow-sm ${isPassed ? 'bg-[#10b981] text-white border-[#059669]' : 'bg-[#ef4444] text-white border-[#dc2626]'}`}>{isPassed ? 'PASSED' : 'FAILED'}</div>{isPassed ? (<button onClick={() => handleAdjustResult(session.id, false)} className="p-1 text-[#d1d5db] hover:text-[#dc2626]">❌</button>) : (<button onClick={() => handleAdjustResult(session.id, true)} className="p-1 text-[#d1d5db] hover:text-[#059669]">✓</button>)}</div>) : (<span className="text-[#d1d5db] font-bold mr-4">-</span>)}<div className="flex items-center gap-1.5">{session.status === 'COMPLETED' && (<><label className={`flex items-center gap-2 cursor-pointer mr-3 px-2 py-1.5 rounded-lg border transition-colors ${selectedForBulk.includes(session.id) ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'}`}><input type="checkbox" checked={selectedForBulk.includes(session.id)} onChange={(e) => { if(e.target.checked) setSelectedForBulk(prev => [...prev, session.id]); else setSelectedForBulk(prev => prev.filter(id => id !== session.id)); }} className="w-4 h-4 cursor-pointer accent-[#2563eb]" /></label><button onClick={() => handleViewResult(session.id)} className="p-2 bg-[#002561] text-white rounded-lg shadow-md hover:scale-105">🖨️</button><button onClick={() => handleSendEmail(session)} className={`p-2 rounded-lg border ${session.email_sent ? 'bg-[#f3f4f6] text-[#9ca3af]' : 'bg-[#ffffff] text-[#009CB4] border-[#009CB4]'}`}>📧</button><button onClick={() => triggerAutoSendToGMF(session.id)} className="p-2 bg-[#2563eb] text-white rounded-lg shadow-md hover:scale-105">📄</button></>)}<button onClick={() => resetParticipant(session.id, candName)} className="p-2 text-[#d1d5db] hover:text-[#ef4444] hover:bg-red-50 rounded-lg ml-1">🗑️</button></div></div></div>)})}</div></td></tr>)})}</tbody></table>
+                  return (<tr key={index} className="hover:bg-blue-50/10 transition-colors"><td className="p-5 pl-8 align-top">
+                  <CandidateAvatar personnelNo={candNo} onClick={(p) => setSelectedPhoto(p)} />
+                  </td><td className="p-5 align-top border-r border-[#e5e7eb]"><div className="flex flex-col"><span className="font-black uppercase text-[#002561] text-sm mb-1">{candName}</span><span className="text-[#009CB4] text-[10px] font-black tracking-widest px-2 py-0.5 bg-[#009CB4]/10 rounded border border-[#009CB4]/20 w-fit mb-1.5">ID: {candNo}</span><span className="text-[11px] text-[#6b7280] font-medium">{candEmail}</span><span className="text-[11px] font-black text-[#4b5563] tracking-widest uppercase mt-0.5">{candUnit}</span></div></td><td className="p-0 align-top"><div className="flex flex-col divide-y divide-[#f3f4f6]">
+                    
+                    {group.exams.map((session: any) => { 
+                      const isPassed = session.final_passed !== null ? session.final_passed : (session.score >= 75); const warnings = session.cheat_warnings || 0;
+                      // LOGIKA BARU: Jika aslinya gagal tapi dipaksa Pass, ubah tampilan nilai jadi 76 atau 78
+                      let displayScore = session.score;
+                      if (isPassed && session.score < 75) {
+                      displayScore = (session.score % 2 === 0) ? 76 : 78;
+                      }
+                       return (<div key={session.id} className="flex flex-wrap xl:flex-nowrap items-center justify-between p-5 pl-8 hover:bg-white transition-colors gap-4"><div className="w-full xl:w-1/3 flex flex-col gap-1"><span className="font-bold text-[#1f2937] text-sm">{session.type_of_ac || '-'}</span><span className="text-[10px] text-[#6b7280] font-bold uppercase tracking-wider">{session.kategori || '-'} • {session.subject} #{session.exam_no}</span></div>
+
+      <div className="w-full xl:w-1/3 flex flex-col items-start gap-1.5">
+      {session.status === 'COMPLETED' ? (
+    <>
+      <div className="flex items-center gap-2">
+        <span className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded border border-emerald-200 text-[10px] font-black uppercase tracking-widest">Finished</span>
+        <span className="font-black text-[#002561] text-xs">Score: {displayScore}</span>
+      </div>
+      {/* Menggunakan Ide Badge Tanggal Ujian yang sebelumnya kita bahas */}
+      <span className="text-[10px] font-bold text-[#4b5563] flex items-center gap-1.5 bg-gray-100 px-2 py-0.5 rounded-md border border-gray-200">
+        <span className="text-[11px]">📅</span> {formatDate(session.started_at || session.candidates?.exam_date)}
+      </span>
+    </>
+  ) : (
+  <>
+      {/* TAMPILAN KETIKA PESERTA MASIH LIVE (BELUM COMPLETED) */}
+      <div className="flex items-center gap-2">
+        <span className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 rounded border border-amber-200 text-[10px] font-black uppercase tracking-widest animate-pulse">
+          <span className="w-2 h-2 inline-block rounded-full bg-[#f59e0b]"></span> Progress
+        </span>
+        
+        {/* INDIKATOR BARU: PG ATAU ESSAY */}
+        <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-tighter border ${
+          session.current_section === 'ESSAY' 
+            ? 'bg-purple-50 text-purple-700 border-purple-200' 
+            : 'bg-blue-50 text-blue-700 border-blue-200'
+        }`}>
+          {session.current_section === 'ESSAY' ? '📝 ESSAY SECTION' : '📑 PG SECTION'}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span className="font-bold text-[#6b7280] text-xs">Score: {displayScore}</span>
+        <span className="text-[10px] font-bold text-[#2563eb] flex items-center gap-1 ml-2">
+          <span className="text-sm">⏳</span> {getRemainingTime(session.started_at)} remaining
+        </span>
+      </div>
+    </>
+  )}
+  {warnings > 0 && (<span className="px-2 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded text-[9px] font-bold tracking-wider flex items-center gap-1 shadow-sm animate-pulse">⚠️ Violations: {warnings}/5</span>)}
+</div>
+<div className="w-full xl:w-1/3 flex items-center justify-end gap-3">{session.status === 'COMPLETED' ? (<div className="flex items-center gap-1 mr-2"><div className={`px-3 py-1 text-[11px] font-black tracking-widest uppercase rounded border shadow-sm ${isPassed ? 'bg-[#10b981] text-white border-[#059669]' : 'bg-[#ef4444] text-white border-[#dc2626]'}`}>{isPassed ? 'PASSED' : 'FAILED'}</div>{isPassed ? (<button onClick={() => handleAdjustResult(session.id, false)} className="p-1 text-[#d1d5db] hover:text-[#dc2626]">❌</button>) : (<button onClick={() => handleAdjustResult(session.id, true)} className="p-1 text-[#d1d5db] hover:text-[#059669]">✓</button>)}</div>) : (<span className="text-[#d1d5db] font-bold mr-4">-</span>)}<div className="flex items-center gap-1.5">{session.status === 'COMPLETED' && (<><label className={`flex items-center gap-2 cursor-pointer mr-3 px-2 py-1.5 rounded-lg border transition-colors ${selectedForBulk.includes(session.id) ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'}`}><input type="checkbox" checked={selectedForBulk.includes(session.id)} onChange={(e) => { if(e.target.checked) setSelectedForBulk(prev => [...prev, session.id]); else setSelectedForBulk(prev => prev.filter(id => id !== session.id)); }} className="w-4 h-4 cursor-pointer accent-[#2563eb]" /></label><button onClick={() => handleViewResult(session.id)} className="p-2 bg-[#002561] text-white rounded-lg shadow-md hover:scale-105">🖨️</button><button onClick={() => handleSendEmail(session)} className={`p-2 rounded-lg border ${session.email_sent ? 'bg-[#f3f4f6] text-[#9ca3af]' : 'bg-[#ffffff] text-[#009CB4] border-[#009CB4]'}`}>📧</button><button onClick={() => triggerAutoSendToGMF(session.id)} className="p-2 bg-[#2563eb] text-white rounded-lg shadow-md hover:scale-105">📄</button></>)}<button onClick={() => resetParticipant(session.id, candName)} className="p-2 text-[#d1d5db] hover:text-[#ef4444] hover:bg-red-50 rounded-lg ml-1">🗑️</button></div></div></div>)})}</div></td></tr>)})}</tbody></table>
           </div>
         </div>
       </div>
