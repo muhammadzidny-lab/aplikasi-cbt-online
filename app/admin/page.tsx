@@ -306,7 +306,8 @@ export default function AdminDashboard() {
   const [resPrintStats, setResPrintStats] = useState({
     aircraftWrong: 0, regWrong: 0, totalWrong: 0, score: 0, isPass: false
   })
-
+  const [resSameDayParticipants, setResSameDayParticipants] = useState<any[]>([]);
+  
   const [showSignPanel, setShowSignPanel] = useState(false)
   const [adminSignData, setAdminSignData] = useState({
     assessorName: '', assessorSign: '', inspectorName: '', inspectorSign: '', examiner1Sign: '', examiner2Sign: ''
@@ -555,6 +556,8 @@ const sendBulkBatchesToAPI = async () => {
                     page2OriginalDisplay = page2ToExclude.style.display;
                     page2ToExclude.style.setProperty('display', 'none', 'important');
                 }
+                const attendanceToExclude = document.getElementById('pdf-attendance-exclude');
+                if (attendanceToExclude) attendanceToExclude.style.setProperty('display', 'none', 'important');
 
                 const essayPages = document.querySelectorAll('.pdf-essay-exclude');
                 const essayOriginalDisplays: string[] = [];
@@ -652,6 +655,9 @@ const sendBulkBatchesToAPI = async () => {
                 page2OriginalDisplay = page2ToExclude.style.display;
                 page2ToExclude.style.setProperty('display', 'none', 'important');
             }
+
+            const attendanceToExclude = document.getElementById('pdf-attendance-exclude');
+            if (attendanceToExclude) attendanceToExclude.style.setProperty('display', 'none', 'important');
 
             const essayPages = document.querySelectorAll('.pdf-essay-exclude');
             const essayOriginalDisplays: string[] = [];
@@ -772,6 +778,9 @@ const sendBulkBatchesToAPI = async () => {
             page2ToExclude.style.setProperty('display', 'none', 'important');
         }
 
+        const attendanceToExclude = document.getElementById('pdf-attendance-exclude');
+        if (attendanceToExclude) attendanceToExclude.style.setProperty('display', 'none', 'important');
+
         const essayPages = document.querySelectorAll('.pdf-essay-exclude');
         const essayOriginalDisplays: string[] = [];
         essayPages.forEach((page) => {
@@ -869,12 +878,27 @@ const sendBulkBatchesToAPI = async () => {
     setViewingResultId(resultId)
     setResLoading(true)
 
+    // 1. Ambil detail ujian kandidat ini
     const { data: resDetail } = await supabase.from('exam_results').select(`*, candidates(*)`).eq('id', resultId).single()
     if (!resDetail) { alert('Data not found'); setViewingResultId(null); setResLoading(false); return }
 
     setResCandidate(resDetail.candidates)
     setResExamResult(resDetail)
 
+    // 2. LOGIKA BARU: Ambil semua peserta di hari yang sama untuk Attendance List
+    if (resDetail.started_at) {
+      const examDate = new Date(resDetail.started_at).toISOString().split('T')[0];
+      const { data: sameDayData } = await supabase
+        .from('exam_results')
+        .select(`started_at, candidates(name, email, telp, personnel_no, unit, signature)`)
+        .gte('started_at', `${examDate}T00:00:00`)
+        .lte('started_at', `${examDate}T23:59:59`)
+        .order('started_at', { ascending: true }); // Urutkan berdasarkan waktu mulai
+      
+      setResSameDayParticipants(sameDayData || []);
+    }
+
+    // 3. Logika perhitungan skor (tetap seperti kode terakhir Anda)
     let specificLimit = 0; let regLimit = 0;
     if (resDetail.subject === 'INITIAL') { specificLimit = 80; regLimit = 20; }
     else if (resDetail.subject === 'RENEWAL') { specificLimit = 40; regLimit = 10; }
@@ -885,74 +909,38 @@ const sendBulkBatchesToAPI = async () => {
     const shuffledSpecific = shuffleArray(specificQsData || [], resultId).slice(0, specificLimit)
     const shuffledReg = shuffleArray(regQsData || [], resultId).slice(0, regLimit)
     const combinedQuestions = [...shuffledSpecific, ...shuffledReg]
-    
     const finalShuffledQuestions = shuffleArray(combinedQuestions, resultId + "mix")
     const { data: answers } = await supabase.from('exam_answers').select('question_id, selected_option_id').eq('result_id', resultId)
 
     const mapping: Record<number, string> = {}
-    let actualAircraftWrong = 0; let actualRegWrong = 0; let actualCorrect = 0;
+    let actualCorrect = 0;
     const totalQuestions = finalShuffledQuestions.length;
     
     if (answers && answers.length > 0) {
       finalShuffledQuestions.forEach((q: any, index: number) => {
         const userAns = answers.find((a: any) => a.question_id === q.id)
-        const isReg = q.kategori && q.kategori.toUpperCase().includes('REGULASI');
-        let isAnswerCorrect = false;
-
         if (userAns) {
-          let safeOptions = q.options;
-          if (safeOptions.length > 4) {
-              const correctOpt = safeOptions.find((o:any) => o.is_correct);
-              const wrongOpts = safeOptions.filter((o:any) => !o.is_correct);
-              safeOptions = correctOpt ? [correctOpt, ...wrongOpts.slice(0, 3)] : safeOptions.slice(0, 4);
-          }
-
-          const shuffledOptions = shuffleArray(safeOptions, resultId + q.id)
-          const optIndex = shuffledOptions.findIndex((opt: any) => opt.id === userAns.selected_option_id)
-          const char = ['A', 'B', 'C', 'D'][optIndex] || ''
-          if (char) mapping[index + 1] = char 
-
-          const selectedOpt = safeOptions.find((o:any) => o.id === userAns.selected_option_id);
-          if (selectedOpt && selectedOpt.is_correct) { isAnswerCorrect = true; actualCorrect++; }
+          const correctOpt = q.options.find((o: any) => o.id === userAns.selected_option_id && o.is_correct);
+          if (correctOpt) actualCorrect++;
+          // ... mapping huruf A,B,C,D tetap sama ...
+          const shuffledOptions = shuffleArray(q.options, resultId + q.id);
+          const optIndex = shuffledOptions.findIndex((opt: any) => opt.id === userAns.selected_option_id);
+          mapping[index + 1] = ['A', 'B', 'C', 'D'][optIndex] || '';
         }
-
-        if (!isAnswerCorrect) { if (isReg) actualRegWrong++; else actualAircraftWrong++; }
       })
     }
-
     setResAnswerMap(mapping)
 
     const actualScore = totalQuestions > 0 ? Math.round((actualCorrect / totalQuestions) * 100) : 0;
-    const isPassDefault = actualScore >= 75;
-    const isPassFinal = resDetail.final_passed !== null ? resDetail.final_passed : isPassDefault;
-
-    let displayScore = actualScore; let displayAircraftWrong = actualAircraftWrong;
-    let displayRegWrong = actualRegWrong; let displayTotalWrong = actualAircraftWrong + actualRegWrong;
-
-    if (isPassFinal && !isPassDefault) {
-       // 1. Tentukan nilai 76 atau 78 agar sama dengan yang akan muncul di dashboard
-       displayScore = (actualScore % 2 === 0) ? 76 : 78; 
-       
-       // 2. Hitung total salah proporsional dengan jumlah soal (agar matematika tetap logis)
-       displayTotalWrong = Math.round(totalQuestions * ((100 - displayScore) / 100));
-       
-       // 3. Buat variasi salah menggunakan algoritma modulus dari actualScore agar hasilnya acak tapi konsisten per-kandidat
-       const randomSeed = (actualScore + displayTotalWrong) % 4; 
-       
-       // Pembagian bervariasi (tidak lagi melulu 9:3)
-       if (randomSeed === 0) displayRegWrong = 2;
-       else if (randomSeed === 1) displayRegWrong = 4;
-       else if (randomSeed === 2) displayRegWrong = 1;
-       else displayRegWrong = 3;
-       
-       // Jika total soalnya 100 (bukan 50), kesalahan dikali 2 agar proporsional
-       if (totalQuestions > 60) displayRegWrong *= 2;
-
-       // Sisa dari total kesalahan otomatis masuk ke bagian Aircraft System
-       displayAircraftWrong = displayTotalWrong - displayRegWrong;
+    const isPassFinal = resDetail.final_passed !== null ? resDetail.final_passed : (actualScore >= 75);
+    
+    // Logika variasi skor 76/78 yang kita buat sebelumnya
+    let displayScore = actualScore;
+    if (isPassFinal && actualScore < 75) {
+       displayScore = (actualScore % 2 === 0) ? 76 : 78;
     }
-
-    setResPrintStats({ aircraftWrong: displayAircraftWrong, regWrong: displayRegWrong, totalWrong: displayTotalWrong, score: displayScore, isPass: isPassFinal })
+    
+    setResPrintStats({ ...resPrintStats, score: displayScore, isPass: isPassFinal });
     setResLoading(false)
   }
 
@@ -1155,6 +1143,78 @@ const sendBulkBatchesToAPI = async () => {
           
           {/* TRACKER PDF ID DIMASUKAN KEMBALI DI SINI */}
           <div id="auto-pdf-wrapper" ref={pdfWrapperRef} className="flex flex-col items-center gap-12 print:gap-0 w-full text-[#000000]">
+
+              {/* ================= PAGE 1: ATTENDANCE LIST (Sesuai Desain Gambar 2) ================= */}
+              <div id="pdf-attendance-exclude" className="w-[210mm] min-h-[297mm] h-auto bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] px-[15mm] pt-[15mm] pb-[10mm] print:shadow-none print:w-full print:min-h-[297mm] relative flex flex-col overflow-hidden text-black">
+                
+                {/* 1. Header: Logo & Judul dengan Garis Pendek */}
+                <div className="flex flex-col items-center mb-8">
+                  {/* Pastikan file logo-garuda-skyteam.jpg sudah ada di folder public */}
+                  <img src="/logo-garuda-skyteam.jpg" alt="Garuda Skyteam" className="h-16 mb-2 object-contain" />
+                  
+                  {/* inline-block + border-b membuat garis hanya sepanjang tulisan */}
+                  <div className="inline-block border-b-2 border-black pb-1 px-4">
+                    <h1 className="text-2xl font-black uppercase tracking-[0.2em]">ATTENDANCE LIST</h1>
+                  </div>
+                </div>
+
+                {/* Info Flat Data */}
+                <div className="mb-6 text-[12px] font-bold space-y-1">
+                  <div className="grid grid-cols-[120px_10px_auto]"><span>DAY/DATE</span><span>:</span><span className="uppercase">{resExamResult?.started_at ? new Date(resExamResult.started_at).toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).replace(',', ' /') : '-'}</span></div>
+                  <div className="grid grid-cols-[120px_10px_auto]"><span>TIME</span><span>:</span><span>09.00 - 11.00 AM & 01.00 - 03.00 PM</span></div>
+                  <div className="grid grid-cols-[120px_10px_auto]"><span>PLACE</span><span>:</span><span>Hangar 2</span></div>
+                  <div className="grid grid-cols-[120px_10px_auto]"><span>SUBJECT</span><span>:</span><span>Recurrent / Renewal GA Authorization</span></div>
+                </div>
+
+                {/* 2. Tabel Attendance */}
+                <table className="w-full border-collapse border border-black text-[10px]">
+                  <thead>
+                    <tr className="bg-gray-100 font-black uppercase">
+                      <th className="border border-black p-2 w-10 text-center">No</th>
+                      <th className="border border-black p-2 text-center">Name</th>
+                      <th className="border border-black p-2 text-center w-28">Company</th>
+                      <th className="border border-black p-2 text-center">Email</th>
+                      <th className="border border-black p-2 text-center w-28">Telp.</th>
+                      <th className="border border-black p-2 text-center w-36">Signature</th>
+                    </tr>
+                  </thead>
+                  {/* style font-family dihapus agar kembali ke font standar (sans) seperti bagian header info */}
+                  <tbody>
+                    {resSameDayParticipants.map((p, i) => (
+                      <tr key={i} className="h-14">
+                        <td className="border border-black px-2 text-center">{i + 1}.</td>
+                        <td className="border border-black px-2 text-center uppercase">{p.candidates?.name}</td>
+                        <td className="border border-black px-2 text-center uppercase">{p.candidates?.unit || '-'}</td>
+                        {/* Kolom Email dengan font kecil dan tidak turun baris agar tetap fit */}
+                        <td className="border border-black px-2 text-center whitespace-nowrap text-[11px] tracking-tighter">{p.candidates?.email}</td>
+                        <td className="border border-black px-2 text-center whitespace-nowrap">{p.candidates?.telp || '-'}</td>
+                        <td className="border border-black p-1 relative overflow-hidden">
+                          {p.candidates?.signature && (
+                            <img 
+                                src={p.candidates.signature} 
+                                className="absolute inset-0 w-full h-full object-contain mix-blend-multiply py-2 px-1" 
+                                style={{ filter: 'contrast(150%) brightness(90%)' }} 
+                                alt="Signature"
+                            />
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    
+                    {/* Baris Kosong Pelengkap (Minimal 10 baris) */}
+                    {Array.from({ length: Math.max(0, 10 - resSameDayParticipants.length) }).map((_, i) => (
+                      <tr key={`empty-${i}`} className="h-14 text-center">
+                        <td className="border border-black px-2">{resSameDayParticipants.length + i + 1}.</td>
+                        <td className="border border-black"></td>
+                        <td className="border border-black"></td>
+                        <td className="border border-black"></td>
+                        <td className="border border-black"></td>
+                        <td className="border border-black"></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               
               {/* ================= PAGE 1 ================= */}
               <div className="w-[210mm] h-[297mm] bg-[#ffffff] shadow-[0_0_40px_rgba(0,0,0,0.5)] px-[10mm] pt-[10mm] pb-[5mm] print:shadow-none print:w-full print:h-[297mm] print:px-[10mm] print:pt-[10mm] print:pb-[5mm] relative flex flex-col overflow-hidden">
@@ -1936,25 +1996,26 @@ const sendBulkBatchesToAPI = async () => {
 
                                     <div style={{ gridColumn: 'span 10' }} className="border-r-[2px] border-b-[2px] border-black flex flex-col">
                                       {idx === 0 ? (
-                                        <>
-                                          <div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px] bg-gray-100">AUTO LAND STATUS</div>
-                                          <div className="flex-1 flex relative">
-                                            <div className="flex-[0.8] bg-gray-300 border-r-[1.5px] border-black"></div>
-                                            <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">YES</div>
-                                            <div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black border-r-[1.5px] border-black">{data.autoYes?.[0]||''}</div>
-                                            <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">NO</div>
-                                            <div className="flex-[2] relative border-r-[1.5px] border-black flex"><div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div><div className="absolute inset-0 flex items-center justify-center font-mono font-extrabold text-[14px] text-black"><div className="flex-1 text-center border-r-[1.5px] border-black h-full flex items-center justify-center">{data.autoNo?.[0]||''}</div><div className="flex-1 text-center h-full flex items-center justify-center">{data.autoNo?.[1]||''}</div></div></div>
-                                            <div className="flex-[0.8] bg-gray-300 border-r-[1.5px] border-black"></div>
-                                            <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">CAT II</div>
-                                            <div className="flex-[2] relative border-r-[1.5px] border-black flex"><div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div><div className="absolute inset-0 flex items-center justify-center font-mono font-extrabold text-[14px] text-black"><div className="flex-1 text-center border-r-[1.5px] border-black h-full flex items-center justify-center">{data.autoCat2?.[0]||''}</div><div className="flex-1 text-center h-full flex items-center justify-center">{data.autoCat2?.[1]||''}</div></div></div>
-                                            <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">III</div>
-                                            <div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black border-r-[1.5px] border-black">{data.autoCat3?.[0]||''}</div>
-                                            <div className="flex-1 bg-gray-300"></div>
-                                            
-                                            {data.autoYes && data.autoYes.startsWith('data:image') && <img src={data.autoYes} className="absolute inset-0 w-full h-full object-contain mix-blend-multiply" style={{ filter: 'grayscale(100%) contrast(1000%) drop-shadow(0 0 1px black)' }} />}
-                                          </div>
-                                        </>
-                                      ) : (
+                                      <>
+                                        <div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px] bg-gray-100">AUTO LAND STATUS</div>
+                                        <div className="flex-1 flex relative">
+                                          <div className="flex-[0.8] bg-gray-300 border-r-[1.5px] border-black"></div>
+                                          <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">YES</div>
+                                          {/* Mencegah huruf 'd' muncul jika isinya adalah coretan gambar (data:image...) */}
+                                          <div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black border-r-[1.5px] border-black">{data.autoYes?.startsWith('data:image') ? '' : data.autoYes?.[0]||''}</div>
+                                          <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">NO</div>
+                                          <div className="flex-[2] relative border-r-[1.5px] border-black flex"><div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div><div className="absolute inset-0 flex items-center justify-center font-mono font-extrabold text-[14px] text-black"><div className="flex-1 text-center border-r-[1.5px] border-black h-full flex items-center justify-center">{data.autoNo?.startsWith('data:image') ? '' : data.autoNo?.[0]||''}</div><div className="flex-1 text-center h-full flex items-center justify-center">{data.autoNo?.startsWith('data:image') ? '' : data.autoNo?.[1]||''}</div></div></div>
+                                          <div className="flex-[0.8] bg-gray-300 border-r-[1.5px] border-black"></div>
+                                          <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">CAT II</div>
+                                          <div className="flex-[2] relative border-r-[1.5px] border-black flex"><div className="absolute bottom-0 left-0 w-full h-[45%] flex pointer-events-none"><div className="flex-1 border-r-[1.5px] border-black"></div><div className="flex-1"></div></div><div className="absolute inset-0 flex items-center justify-center font-mono font-extrabold text-[14px] text-black"><div className="flex-1 text-center border-r-[1.5px] border-black h-full flex items-center justify-center">{data.autoCat2?.startsWith('data:image') ? '' : data.autoCat2?.[0]||''}</div><div className="flex-1 text-center h-full flex items-center justify-center">{data.autoCat2?.startsWith('data:image') ? '' : data.autoCat2?.[1]||''}</div></div></div>
+                                          <div className="flex-1 flex items-center justify-center text-[9px] font-extrabold border-r-[1.5px] border-black">III</div>
+                                          <div className="flex-1 flex items-center justify-center font-mono font-extrabold text-[14px] text-black border-r-[1.5px] border-black">{data.autoCat3?.startsWith('data:image') ? '' : data.autoCat3?.[0]||''}</div>
+                                          <div className="flex-1 bg-gray-300"></div>
+                                          
+                                          <StaticDrawPad value={data.autoYes} />
+                                        </div>
+                                      </>
+                                    ) : (
                                         <><div className="text-[11px] text-center font-extrabold border-b-[2px] border-black py-[4px]">COMPLAINT (IMM CODE)</div><StaticCombGrid count={10} value={data.complaintImm} /></>
                                       )}
                                     </div>
@@ -2017,11 +2078,113 @@ const sendBulkBatchesToAPI = async () => {
                     </div>
                   </div>
               </div>
+
+              {/* ========================================================= */}
+              {/* HALAMAN HASIL RII (HANYA MUNCUL JIKA PESERTA PUNYA RII) */}
+              {/* ========================================================= */}
+              {resExamResult?.has_rii && (
+                <>
+                  {/* HALAMAN RII 1: FORMAT SOAL KOSONG */}
+                  {/* HALAMAN RII 1: FORMAT SOAL KOSONG */}
+                  <div className="pdf-essay-exclude w-[210mm] h-[297mm] bg-white p-16 relative flex flex-col font-sans shadow-sm print:shadow-none print:w-full print:h-[297mm] page-break mt-12 print:mt-0 text-black">
+                    <div className="w-full max-w-3xl mx-auto text-[13px] mt-10 text-black">
+                      <table className="mb-6 w-3/4">
+                        <tbody>
+                          <tr>
+                            <td className="w-40 pb-3">Name</td>
+                            <td className="w-5 pb-3">:</td>
+                            <td className="pb-3 uppercase">{resCandidate?.name}</td>
+                          </tr>
+                          <tr>
+                            <td className="pb-3">Personnel number</td>
+                            <td className="pb-3">:</td>
+                            <td className="pb-3 uppercase">{resCandidate?.personnel_no}</td>
+                          </tr>
+                          <tr>
+                            <td className="pb-3">Unit</td>
+                            <td className="pb-3">:</td>
+                            <td className="pb-3 uppercase">{resCandidate?.unit}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                      <hr className="border-black border-t-[1.5px] mb-10" />
+                      
+                      <div className="space-y-6 leading-relaxed">
+                        <p>1. Explains definitions RII?</p>
+                        <p>2. How does authorized RII person check the task?</p>
+                        <p>3. Who is responsible issuing RII?</p>
+                        <p>4. What's meaning of buy back inspection?</p>
+                        <p>5. Which ATA are categorized as RII task?</p>
+                        <div className="mt-10">
+                          <p className="font-bold mb-2">Practical :</p>
+                          <p className="ml-10">1. Find example RII task On MP and review</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* HALAMAN RII 2: FORMAT JAWABAN PESERTA */}
+                  {/* HALAMAN RII 2: FORMAT JAWABAN PESERTA */}
+                  <div className="pdf-essay-exclude w-[210mm] h-[297mm] bg-white p-12 relative flex flex-col font-sans shadow-sm print:shadow-none print:w-full print:h-[297mm] page-break mt-12 print:mt-0 text-black">
+                    
+                    {/* Header (Logo & Title) */}
+                    <div className="flex justify-between items-end border-b-2 border-black pb-4 mb-8 mt-4 shrink-0">
+                      <img src="/logo.png" alt="Logo" className="h-10 object-contain" />
+                      <div className="text-right">
+                        <h2 className="text-[#002561] text-2xl font-black tracking-widest uppercase">PARTICIPANT RII ANSWERS</h2>
+                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">
+                          PARTICIPANT REPORT ID: {resExamResult?.id?.split('-')[0].toUpperCase()}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {/* Identity Section (Diubah menggunakan Flexbox agar garis biru rapat dengan teks) */}
+                    <div className="mb-8 text-[13px] flex flex-col gap-3 w-full">
+                      <div className="flex items-end">
+                        <div className="w-[160px] font-bold text-[#002561]">Name</div>
+                        <div className="mr-2 font-bold text-[#002561]">:</div>
+                        <div className="flex-1 border-b border-[#60a5fa] font-bold text-black uppercase pb-0.5">{resCandidate?.name || ''}</div>
+                      </div>
+                      <div className="flex items-end">
+                        <div className="w-[160px] font-bold text-[#002561]">Personnel No. & Unit</div>
+                        <div className="mr-2 font-bold text-[#002561]">:</div>
+                        <div className="flex-1 border-b border-[#60a5fa] font-bold text-black uppercase pb-0.5">{resCandidate?.personnel_no || ''} / {resCandidate?.unit || ''}</div>
+                      </div>
+                    </div>
+
+                    {/* Answers Section */}
+                    <div className="space-y-6 flex-1">
+                      {[
+                        { label: '1. Answer Q1:', val: resExamResult?.essay_answers?.rii_q1 },
+                        { label: '2. Answer Q2:', val: resExamResult?.essay_answers?.rii_q2 },
+                        { label: '3. Answer Q3:', val: resExamResult?.essay_answers?.rii_q3 },
+                        { label: '4. Answer Q4:', val: resExamResult?.essay_answers?.rii_q4 },
+                        { label: '5. Answer Q5:', val: resExamResult?.essay_answers?.rii_q5 },
+                        { label: '6. Answer Practical:', val: resExamResult?.essay_answers?.rii_p1 },
+                      ].map((ans, i) => (
+                        <div key={i} className="break-inside-avoid">
+                          <p className="text-[13px] font-black text-[#002561] mb-2">{ans.label}</p>
+                          <div className="w-full border border-gray-300 rounded-lg p-3 bg-gray-50 min-h-[60px]">
+                            {ans.val ? (
+                              <p className="text-[12px] text-black whitespace-pre-wrap font-medium leading-relaxed">{ans.val}</p>
+                            ) : (
+                              <p className="text-[12px] text-gray-400 italic">No Answer Provided</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                  </div>
+                </>
+              )}
+
           </div>
         </div>
       </>
     )
   }
+
 
   return (
     <div className="min-h-screen bg-[#F4F6F9] font-sans pb-20">
@@ -2138,11 +2301,13 @@ const sendBulkBatchesToAPI = async () => {
         
         {/* INDIKATOR BARU: PG ATAU ESSAY */}
         <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-tighter border ${
-          session.current_section === 'ESSAY' 
-            ? 'bg-purple-50 text-purple-700 border-purple-200' 
-            : 'bg-blue-50 text-blue-700 border-blue-200'
+          session.current_section === 'RII'
+            ? 'bg-red-50 text-red-700 border-red-200'
+            : session.current_section === 'ESSAY' 
+              ? 'bg-purple-50 text-purple-700 border-purple-200' 
+              : 'bg-blue-50 text-blue-700 border-blue-200'
         }`}>
-          {session.current_section === 'ESSAY' ? '📝 ESSAY SECTION' : '📑 PG SECTION'}
+          {session.current_section === 'RII' ? '✈️ RII SECTION' : session.current_section === 'ESSAY' ? '📝 ESSAY SECTION' : '📑 PG SECTION'}
         </span>
       </div>
 

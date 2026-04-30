@@ -10,7 +10,7 @@ export default function Home() {
   const [isCompressing, setIsCompressing] = useState(false)
   
   const [formData, setFormData] = useState({
-    name: '', email: '', personnel_no: '', unit: '', rating_sought: '',
+    name: '', email: '', telp: "", personnel_no: '', unit: '', rating_sought: '',
     exam_date: new Date().toISOString().split('T')[0], 
     dgac_amel_no: '', dgac_rating: '', ga_auth_no: '', ga_rating: '',
     photo: '', signature: '' 
@@ -122,6 +122,11 @@ export default function Home() {
 
     const personnelRegex = /^\d{6}$/
     if (!personnelRegex.test(formData.personnel_no)) { alert('FAIL: Personnel No. must consist of exactly 6 digits!'); return }
+
+    // VALIDASI BARU UNTUK NO TELP
+    const telpRegex = /^\d{10,13}$/
+    if (!telpRegex.test(formData.telp)) { alert('FAIL: Phone Number must consist of 10 to 13 digits of numbers only!'); return }
+
     if (!formData.photo) { alert('FAIL: Please upload your photos first!'); return }
     if (!formData.signature) { alert('FAIL: Please fill in your Digital Signature first!'); return }
 
@@ -169,11 +174,21 @@ export default function Home() {
                 placeholder="ENTER YOUR FULL NAME" />
             </div>
 
-            <div className="md:col-span-2">
+            {/* EMAIL DIBUAT md:col-span-1 AGAR BERBAGI BARIS */}
+            <div className="md:col-span-1">
               <label className="block text-xs font-bold text-[#002561] tracking-wider mb-2 uppercase">Email Address</label>
               <input required name="email" type="email" onChange={handleChange} 
                 className="w-full border-2 border-gray-200 rounded-lg p-3 focus:ring-0 focus:border-[#009CB4] outline-none lowercase transition-colors bg-gray-50 focus:bg-white" 
                 placeholder="example@garuda-indonesia.com" />
+            </div>
+
+            {/* INPUT NO TELP BARU DI SEBELAH EMAIL */}
+            <div className="md:col-span-1">
+              <label className="block text-xs font-bold text-[#002561] tracking-wider mb-2 uppercase">No. Telp</label>
+              <input required name="telp" type="tel" onChange={handleChange} 
+                pattern="\d{10,13}" title="Please enter 10 to 13 digits of numbers"
+                className="w-full border-2 border-gray-200 rounded-lg p-3 focus:ring-0 focus:border-[#009CB4] outline-none transition-colors bg-gray-50 focus:bg-white" 
+                placeholder="E.G. 081234567890" />
             </div>
 
             <div>

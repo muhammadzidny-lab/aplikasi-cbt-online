@@ -51,7 +51,7 @@ const DrawPad = ({ value, onChange, className = "" }: any) => {
     ctx?.moveTo(e.clientX - rect.left, e.clientY - rect.top);
     if (ctx) {
       ctx.strokeStyle = "black";
-      ctx.lineWidth = 15; // DIBUAT TEBAL SESUAI PERMINTAAN
+      ctx.lineWidth = 7; // DIBUAT TEBAL SESUAI PERMINTAAN
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
     }
@@ -172,6 +172,8 @@ export default function EssayPage({ params }: { params: Promise<{ id: string }> 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0); 
 
+  const [hasRII, setHasRII] = useState(false);
+
   // Header UI States
   const [candidateId, setCandidateId] = useState<string>('UNKNOWN');
   const [typeOfAC, setTypeOfAC] = useState<string>('');
@@ -237,6 +239,8 @@ export default function EssayPage({ params }: { params: Promise<{ id: string }> 
       setKategori(resultData.kategori || 'Category');
       setSubject(resultData.subject || 'Subject');
       setExamNo(resultData.exam_no || '0');
+
+      setHasRII(resultData.has_rii || false);
 
       // Kalkulasi Sisa Waktu
       const duration = 120;
@@ -373,7 +377,12 @@ export default function EssayPage({ params }: { params: Promise<{ id: string }> 
   const handleSubmit = async (forceSubmitType: 'TIMEOUT' | null = null) => {
     if (!forceSubmitType) { 
       isSystemDialogActive.current = true;
-      const confirmComplete = window.confirm(`✅ Are you sure you want to finish and submit the Essay Exam?`);
+      // Teks konfirmasi berubah otomatis tergantung punya RII atau tidak
+      const confirmMsg = hasRII 
+        ? `✅ Are you sure you want to finish the Essay and proceed to the RII Section?` 
+        : `✅ Are you sure you want to finish and submit the Essay Exam?`;
+      
+      const confirmComplete = window.confirm(confirmMsg);
       setTimeout(() => { isSystemDialogActive.current = false; }, 500); 
       if (!confirmComplete) return;
     } else if (forceSubmitType === 'TIMEOUT') { 
@@ -383,10 +392,34 @@ export default function EssayPage({ params }: { params: Promise<{ id: string }> 
     }
 
     setIsSubmitting(true);
-    await supabase.from('exam_results').update({ essay_answers: answers, essay_completed: true, status: 'COMPLETED', finished_at: new Date().toISOString() }).eq('id', examResultId);
-    localStorage.removeItem(`cheat_${examResultId}`);
-    localStorage.removeItem(`essay_draft_${examResultId}`);
-    router.push(`/result/${examResultId}`);
+
+    if (hasRII) {
+        // JIKA PUNYA RII: Simpan jawaban essay, tapi status ujian JANGAN COMPLETED dulu
+        await supabase.from('exam_results').update({ 
+            essay_answers: answers, 
+            essay_completed: true 
+        }).eq('id', examResultId);
+
+        localStorage.removeItem(`cheat_${examResultId}`);
+        localStorage.removeItem(`essay_draft_${examResultId}`);
+        
+        // Arahkan ke halaman RII
+        router.push(`/exam/${examResultId}/rii`);
+    } else {
+        // JIKA TIDAK PUNYA RII: Simpan jawaban dan langsung COMPLETED
+        await supabase.from('exam_results').update({ 
+            essay_answers: answers, 
+            essay_completed: true, 
+            status: 'COMPLETED', 
+            finished_at: new Date().toISOString() 
+        }).eq('id', examResultId);
+        
+        localStorage.removeItem(`cheat_${examResultId}`);
+        localStorage.removeItem(`essay_draft_${examResultId}`);
+        
+        // Arahkan ke halaman hasil/selesai
+        router.push(`/result/${examResultId}`);
+    }
   };
 
   const formatTime = (seconds: number) => {
@@ -706,7 +739,12 @@ export default function EssayPage({ params }: { params: Promise<{ id: string }> 
             <button onClick={() => handleSubmit(null)} disabled={isSubmitting} 
               className={`px-12 py-4 font-black tracking-widest uppercase rounded-full transition-all shadow-xl
               ${isSubmitting ? "bg-gray-400 text-white cursor-not-allowed" : "bg-[#4A6354] text-white hover:bg-[#33473C] shadow-[#4A6354]/30 hover:scale-105"}`}>
-              {isSubmitting ? "SUBMITTING..." : "SUBMIT FINAL EXAM"}
+              {isSubmitting 
+                ? "SUBMITTING..." 
+                : hasRII 
+                  ? "NEXT TO RII SECTION ➔" 
+                  : "SUBMIT FINAL EXAM"
+              }
             </button>
           </div>
 
