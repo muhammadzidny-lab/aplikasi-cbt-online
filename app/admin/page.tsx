@@ -914,33 +914,78 @@ const sendBulkBatchesToAPI = async () => {
 
     const mapping: Record<number, string> = {}
     let actualCorrect = 0;
+    let countedRegWrong = 0;
+    let countedSpecificWrong = 0;
     const totalQuestions = finalShuffledQuestions.length;
     
-    if (answers && answers.length > 0) {
-      finalShuffledQuestions.forEach((q: any, index: number) => {
+    // 1. Hitung jawaban benar dan salah
+    finalShuffledQuestions.forEach((q: any, index: number) => {
+      let isCorrect = false;
+      if (answers && answers.length > 0) {
         const userAns = answers.find((a: any) => a.question_id === q.id)
         if (userAns) {
           const correctOpt = q.options.find((o: any) => o.id === userAns.selected_option_id && o.is_correct);
-          if (correctOpt) actualCorrect++;
-          // ... mapping huruf A,B,C,D tetap sama ...
+          if (correctOpt) isCorrect = true;
+          
+          // mapping huruf A,B,C,D
           const shuffledOptions = shuffleArray(q.options, resultId + q.id);
           const optIndex = shuffledOptions.findIndex((opt: any) => opt.id === userAns.selected_option_id);
           mapping[index + 1] = ['A', 'B', 'C', 'D'][optIndex] || '';
         }
-      })
-    }
+      }
+
+      if (isCorrect) {
+        actualCorrect++;
+      } else {
+        // Cek apakah soal yang salah ini kategori Regulasi atau Spesifik
+        if (q.kategori && q.kategori.toUpperCase().includes('REGULASI')) {
+          countedRegWrong++;
+        } else {
+          countedSpecificWrong++;
+        }
+      }
+    })
+    
     setResAnswerMap(mapping)
 
     const actualScore = totalQuestions > 0 ? Math.round((actualCorrect / totalQuestions) * 100) : 0;
     const isPassFinal = resDetail.final_passed !== null ? resDetail.final_passed : (actualScore >= 75);
     
-    // Logika variasi skor 76/78 yang kita buat sebelumnya
+    // 2. Logika variasi skor 76/78 (Katrol Nilai) yang LEBIH ACAK
     let displayScore = actualScore;
     if (isPassFinal && actualScore < 75) {
-       displayScore = (actualScore % 2 === 0) ? 76 : 78;
+       // Mengambil angka/huruf terakhir dari ID Ujian untuk menghasilkan 50:50 yang natural
+       const randomChar = resultId.charCodeAt(resultId.length - 1);
+       // Jika digabungkan, maka akan memunculkan 76 atau 78 secara acak untuk setiap peserta
+       displayScore = (randomChar % 2 === 0) ? 76 : 78;
     }
-    
-    setResPrintStats({ ...resPrintStats, score: displayScore, isPass: isPassFinal });
+
+    // 3. Kalkulasi penyesuaian jumlah salah agar Sinkron/Masuk Akal dengan nilai di atas kertas
+    let finalRegWrong = countedRegWrong;
+    let finalSpecificWrong = countedSpecificWrong;
+    let finalTotalWrong = countedRegWrong + countedSpecificWrong;
+
+    if (displayScore !== actualScore && totalQuestions > 0) {
+        finalTotalWrong = totalQuestions - Math.round((displayScore / 100) * totalQuestions);
+        // Kurangi jumlah salah di spesifik agar perhitungan totalnya pas
+        finalSpecificWrong = Math.max(0, finalTotalWrong - finalRegWrong);
+        
+        // Jaga-jaga jika regulasi yang salah terlalu banyak
+        if (finalRegWrong > finalTotalWrong) {
+            finalRegWrong = finalTotalWrong;
+            finalSpecificWrong = 0;
+        }
+    }
+
+    // 4. Tembakkan ke State agar tampil di PDF
+    setResPrintStats({ 
+        ...resPrintStats, 
+        aircraftWrong: finalSpecificWrong, 
+        regWrong: finalRegWrong, 
+        totalWrong: finalTotalWrong, 
+        score: displayScore, 
+        isPass: isPassFinal 
+    });
     setResLoading(false)
   }
 
