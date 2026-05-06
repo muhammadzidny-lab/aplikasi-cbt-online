@@ -52,6 +52,7 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
   
   // State UI
   const [candidateId, setCandidateId] = useState<string>('UNKNOWN')
+  const [candidateUuid, setCandidateUuid] = useState<string>('')
   const [typeOfAC, setTypeOfAC] = useState<string>('')
   const [kategori, setKategori] = useState<string>('')
   const [subject, setSubject] = useState<string>('')
@@ -95,6 +96,7 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
       if (resultData.status === 'ESSAY') { router.push(`/exam/${examResultId}/essay`); return; }
 
       setCandidateId(resultData.candidates?.personnel_no || 'UNKNOWN')
+      setCandidateUuid(resultData.candidate_id)
       setTypeOfAC(resultData.type_of_ac || 'Aircraft')
       setKategori(resultData.kategori || 'Category')
       setSubject(resultData.subject || 'Subject')
@@ -280,13 +282,43 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
     }
     setLoading(true)
     
-    // =================================================================
-    // PERBAIKAN ALUR ROUTING: SET STATUS MENJADI 'ESSAY'
-    // =================================================================
-    await supabase.from('exam_results').update({ status: 'ESSAY' }).eq('id', examResultId)
-    localStorage.removeItem(`cheat_${examResultId}`)
-    
-    router.push(`/exam/${examResultId}/essay`)
+    // 1. CEK APAKAH PESERTA SUDAH PERNAH MENGERJAKAN ESSAY DI RATING/SESI LAIN
+    const { data: prevEssayData } = await supabase
+      .from('exam_results')
+      .select('essay_answers')
+      .eq('candidate_id', candidateUuid)
+      .neq('id', examResultId)
+      .not('essay_answers', 'is', null)
+      .limit(1)
+      .maybeSingle();
+
+    // Pastikan object essay_answers benar-benar ada isinya
+    const hasDoneEssay = prevEssayData && prevEssayData.essay_answers && Object.keys(prevEssayData.essay_answers).length > 0;
+
+    // 2. LOGIKA PERCABANGAN SUBMIT
+    if (typeOfAC === 'WEIGHT & BALANCE') {
+       // WB: Langsung selesai tanpa Essay
+       await supabase.from('exam_results').update({ status: 'COMPLETED', finished_at: new Date().toISOString() }).eq('id', examResultId)
+       localStorage.removeItem(`cheat_${examResultId}`)
+       router.push(`/result/${examResultId}`)
+       
+    } else if (hasDoneEssay) {
+       // MULTIPLE RATING: Sudah pernah Essay -> Salin jawaban essay sebelumnya & langsung Selesai
+       await supabase.from('exam_results').update({ 
+           status: 'COMPLETED', 
+           finished_at: new Date().toISOString(),
+           essay_answers: prevEssayData.essay_answers // <-- Keajaiban terjadi di sini (Otomatis salin jawaban)
+       }).eq('id', examResultId)
+       
+       localStorage.removeItem(`cheat_${examResultId}`)
+       router.push(`/result/${examResultId}`)
+       
+    } else {
+       // REGULAR & BELUM ESSAY: Lanjut ke halaman Essay
+       await supabase.from('exam_results').update({ status: 'ESSAY' }).eq('id', examResultId)
+       localStorage.removeItem(`cheat_${examResultId}`)
+       router.push(`/exam/${examResultId}/essay`)
+    }
   }
 
   const formatTime = (seconds: number) => {

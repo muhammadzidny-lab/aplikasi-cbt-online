@@ -236,6 +236,8 @@ const StaticDrawPad = ({ value, className = "" }: { value: string, className?: s
   );
 };
 
+
+
 const StaticCombGrid = ({ count, value = "", placeholders = [] }: any) => {
   const safeValue = typeof value === 'string' ? value : "";
   const chars = safeValue.split('').slice(0, count);
@@ -393,7 +395,8 @@ export default function AdminDashboard() {
 
   const { data: sessionData } = await supabase
       .from('exam_results')
-      .select(`id, current_section, type_of_ac, kategori, subject, exam_no, status, started_at, score, cheat_warnings, final_passed, email_sent, essay_answers, candidates (name, email, personnel_no, unit, rating_sought, exam_date, dgac_amel_no, dgac_rating, ga_auth_no, ga_rating)`)
+      // V-- TAMBAHKAN has_rii DI SINI --V
+      .select(`id, has_rii, current_section, type_of_ac, kategori, subject, exam_no, status, started_at, score, cheat_warnings, final_passed, email_sent, essay_answers, candidates (name, email, personnel_no, unit, rating_sought, exam_date, dgac_amel_no, dgac_rating, ga_auth_no, ga_rating)`)
       .order('started_at', { ascending: false })
 
     if (sessionData) setSessions(sessionData)
@@ -453,7 +456,32 @@ export default function AdminDashboard() {
 
   const handleAdjustResult = async (resultId: string, isPassed: boolean) => {
     if (!window.confirm(`Yakin mengubah status menjadi ${isPassed ? 'PASSED' : 'FAILED'}?`)) return
-    await supabase.from('exam_results').update({ final_passed: isPassed }).eq('id', resultId); fetchData()
+
+    // Jika Admin memaksa PASSED (katrol nilai)
+    if (isPassed) {
+       // Ambil skor aslinya dulu
+       const { data: currentResult } = await supabase.from('exam_results').select('score').eq('id', resultId).single()
+       
+       if (currentResult && currentResult.score < 75) {
+          // Buat nilai 76 atau 78 secara permanen di database berdasarkan ID (agar konsisten 50:50)
+          const randomChar = resultId.charCodeAt(resultId.length - 1);
+          const newKatrokScore = (randomChar % 2 === 0) ? 76 : 78;
+          
+          await supabase.from('exam_results').update({ 
+             final_passed: true, 
+             score: newKatrokScore // <-- Skor diupdate permanen di database!
+          }).eq('id', resultId);
+       } else {
+          // Jika skor asli sudah di atas 75, cukup update final_passed saja
+          await supabase.from('exam_results').update({ final_passed: true }).eq('id', resultId);
+       }
+    } else {
+       // Jika dikembalikan ke FAILED, biarkan skornya tetap seperti itu (atau kembali ke asli jika Anda menyimpan nilai asli, tapi untuk sekarang kita biarkan skor katrolannya atau biarkan apa adanya).
+       // Untuk amannya, kita hanya update statusnya saja jika diganti ke FAILED.
+       await supabase.from('exam_results').update({ final_passed: false }).eq('id', resultId);
+    }
+    
+    fetchData()
   }
 
   // FUNGSI EMAIL BAWAAN (MAILTO)
@@ -468,8 +496,8 @@ export default function AdminDashboard() {
 
   // FUNGSI GHOST AUTO-SEND TABEL KE GMF
   const triggerAutoSendToGMF = async (sessionId: string) => {
-    const targetEmails = 'mapriyansyahh@gmail.com, arik.yanwar@garuda-indonesia.com';
-    if(!window.confirm(`Send a PDF copy of this document to:\n- mapriyansyahh@gmail.com\n- arik.yanwar@garuda-indonesia.com\n\n(The process runs for 3-5 seconds in the background.).`)) return;
+    const targetEmails = 'sydneyy2125@gmail.com';
+    if(!window.confirm(`Send a PDF copy of this document to:\n- sydneyy2125@gmail.com\n\n(The process runs for 3-5 seconds in the background.).`)) return;
     setAutoSendTarget(targetEmails);
     setPdfCaptured(false);
     await handleViewResult(sessionId);
@@ -893,9 +921,19 @@ const sendBulkBatchesToAPI = async () => {
         .select(`started_at, candidates(name, email, telp, personnel_no, unit, signature)`)
         .gte('started_at', `${examDate}T00:00:00`)
         .lte('started_at', `${examDate}T23:59:59`)
-        .order('started_at', { ascending: true }); // Urutkan berdasarkan waktu mulai
+        .order('started_at', { ascending: true }); 
       
-      setResSameDayParticipants(sameDayData || []);
+      // LOGIKA FILTER DUPLIKAT: Pastikan 1 orang hanya muncul 1 kali di Attendance List
+      const uniqueParticipants = (sameDayData || []).reduce((acc: any[], current: any) => {
+        // Cek apakah kandidat dengan personnel_no ini sudah masuk ke daftar 'acc'
+        const isDuplicate = acc.find(item => item.candidates?.personnel_no === current.candidates?.personnel_no);
+        if (!isDuplicate && current.candidates) {
+          acc.push(current);
+        }
+        return acc;
+      }, []);
+
+      setResSameDayParticipants(uniqueParticipants);
     }
 
     // 3. Logika perhitungan skor (tetap seperti kode terakhir Anda)
@@ -1033,6 +1071,7 @@ const sendBulkBatchesToAPI = async () => {
     if (statusFilter === 'LIVE') matchesStatus = session.status !== 'COMPLETED';
     if (statusFilter === 'PASSED') matchesStatus = session.status === 'COMPLETED' && isPassed;
     if (statusFilter === 'FAILED') matchesStatus = session.status === 'COMPLETED' && !isPassed;
+    if (statusFilter === 'RII') matchesStatus = session.has_rii === true;
 
     let matchesDate = true;
     if (dateFilter && session.started_at) {
@@ -2007,15 +2046,15 @@ const sendBulkBatchesToAPI = async () => {
                                 <div className="flex h-[210px] border-b-[3px] border-black">
                                   <div className="w-[55%] border-r-[3px] border-black flex">
                                     <div className="w-8 border-r-[2px] border-black flex items-center justify-center bg-gray-50"><span className="-rotate-90 whitespace-nowrap text-[13px] font-extrabold tracking-widest text-black">Complaint</span></div>
-                                    <div className="flex-1 relative bg-[repeating-linear-gradient(transparent,transparent_34px,#000_34px,#000_35px)] bg-[size:100%_35px]">
-                                      <div className="absolute inset-0 w-full h-full bg-transparent font-extrabold text-black uppercase text-[12px] leading-[35px] pt-[7px] pl-[8px] pr-[4px] whitespace-pre-wrap">{data.complaint}</div>
+                                    <div className="flex-1 relative overflow-hidden bg-[repeating-linear-gradient(transparent,transparent_34px,#000_34px,#000_35px)] bg-[size:100%_35px]">
+                                      <div className="absolute inset-0 w-full h-full bg-transparent font-extrabold text-black uppercase text-[12px] leading-[35px] pt-[7px] pl-[8px] pr-[4px] whitespace-pre-wrap break-words overflow-hidden">{data.complaint}</div>
                                     </div>
                                   </div>
                                   <div className="w-[45%] flex">
                                     <div className="flex-1 flex border-r-[3px] border-black">
                                       <div className="w-8 border-r-[2px] border-black flex items-center justify-center bg-gray-50"><span className="-rotate-90 whitespace-nowrap text-[13px] font-extrabold tracking-widest text-black">Action</span></div>
-                                      <div className="flex-1 relative bg-[repeating-linear-gradient(transparent,transparent_34px,#000_34px,#000_35px)] bg-[size:100%_35px]">
-                                        <div className="absolute inset-0 w-full h-full bg-transparent font-extrabold text-black uppercase text-[12px] leading-[35px] pt-[7px] pl-[8px] pr-[4px] whitespace-pre-wrap">{data.action}</div>
+                                      <div className="flex-1 relative overflow-hidden bg-[repeating-linear-gradient(transparent,transparent_34px,#000_34px,#000_35px)] bg-[size:100%_35px]">
+                                        <div className="absolute inset-0 w-full h-full bg-transparent font-extrabold text-black uppercase text-[12px] leading-[35px] pt-[7px] pl-[8px] pr-[4px] whitespace-pre-wrap break-words overflow-hidden">{data.action}</div>
                                       </div>
                                     </div>
                                     <div className="w-10 flex items-center justify-center bg-gray-50">
@@ -2106,6 +2145,22 @@ const sendBulkBatchesToAPI = async () => {
 
                                 </div>
                               </div>
+                              
+                              {/* KOTAK KUNING LAMPIRAN */}
+                              {((data.complaint?.length > 120) || (data.action?.length > 120)) && (
+                                <div className="mt-3 p-3 bg-yellow-50/50 border border-dashed border-yellow-500 rounded-lg text-black text-[11px] break-inside-avoid shadow-sm">
+                                  <p className="font-bold text-red-600 mb-2 uppercase tracking-wider text-[10px]">⚠️ EXTENDED TEXT REFERENCE (OVERFLOW) :</p>
+                                  <div className="flex flex-col gap-3">
+                                    {data.complaint?.length > 120 && (
+                                      <div><span className="font-black text-[#002561] underline">FULL COMPLAINT:</span> <br/><span className="whitespace-pre-wrap leading-relaxed font-medium">{data.complaint}</span></div>
+                                    )}
+                                    {data.action?.length > 120 && (
+                                      <div><span className="font-black text-[#002561] underline">FULL ACTION:</span> <br/><span className="whitespace-pre-wrap leading-relaxed font-medium">{data.action}</span></div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
                             </div>
                           ))}
                         </div>
@@ -2169,8 +2224,7 @@ const sendBulkBatchesToAPI = async () => {
                   </div>
 
                   {/* HALAMAN RII 2: FORMAT JAWABAN PESERTA */}
-                  {/* HALAMAN RII 2: FORMAT JAWABAN PESERTA */}
-                  <div className="pdf-essay-exclude w-[210mm] h-[297mm] bg-white p-12 relative flex flex-col font-sans shadow-sm print:shadow-none print:w-full print:h-[297mm] page-break mt-12 print:mt-0 text-black">
+                  <div className="pdf-essay-exclude w-[210mm] min-h-[297mm] h-auto bg-white p-12 relative flex flex-col font-sans shadow-sm print:shadow-none print:w-full print:min-h-[297mm] print:h-auto page-break mt-12 print:mt-0 text-black">
                     
                     {/* Header (Logo & Title) */}
                     <div className="flex justify-between items-end border-b-2 border-black pb-4 mb-8 mt-4 shrink-0">
@@ -2306,7 +2360,27 @@ const sendBulkBatchesToAPI = async () => {
         <div className="bg-[#ffffff] rounded-3xl shadow-2xl border border-[#e5e7eb] overflow-hidden flex flex-col">
           <div className="p-6 md:p-8 border-b border-[#e5e7eb] bg-[#ffffff] flex flex-col gap-6">
             <div className="flex justify-between items-center"><h2 className="text-xl font-black text-[#002561] tracking-wider uppercase flex items-center gap-3"><span className="p-2 bg-blue-50 text-[#2563eb] rounded-lg text-lg">🧑‍✈️</span> Live Participants & Exam Results</h2><div className="flex items-center"><span className="bg-[#f3f4f6] text-[#4b5563] px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest shadow-sm border border-[#d1d5db]">{groupedSessions.length} CANDIDATES FOUND</span>{selectedForBulk.length > 0 && (<button onClick={startBulkSend} className="ml-4 px-5 py-1.5 bg-[#f59e0b] hover:bg-[#d97706] text-white rounded-full text-[10px] font-black tracking-widest shadow-[0_0_15px_rgba(245,158,11,0.4)] hover:scale-105 transition-all animate-bounce border border-[#fcd34d] flex items-center gap-2"><span className="text-sm">📨</span> BULK SEND ({selectedForBulk.length})</button>)}</div></div>
-            <div className="flex flex-col xl:flex-row gap-4 items-center justify-between bg-[#f9fafb] p-4 rounded-2xl border border-[#e5e7eb]"><div className="relative w-full xl:w-auto flex-1 max-w-md"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl">🔍</span><input type="text" placeholder="Search Name or Pers No..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 rounded-xl border border-[#d1d5db] focus:outline-none focus:border-[#009CB4] text-sm font-bold text-[#002561] placeholder-gray-400 shadow-inner" /></div><div className="flex flex-col md:flex-row items-center gap-4 w-full xl:w-auto"><div className="flex items-center gap-3 w-full md:w-auto bg-white border border-[#d1d5db] px-4 py-2 rounded-xl shadow-sm"><span className="text-lg">📅</span><input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="focus:outline-none text-sm font-bold text-[#002561] uppercase cursor-pointer" />{dateFilter && (<button onClick={() => setDateFilter('')} className="text-[10px] bg-red-100 text-red-600 font-bold px-2 py-1 rounded-md hover:bg-red-200 transition-all uppercase tracking-wider">Clear</button>)}</div><div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">{['ALL', 'LIVE', 'PASSED', 'FAILED'].map(status => (<button key={status} onClick={() => setStatusFilter(status)} className={`px-5 py-2.5 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all whitespace-nowrap border-2 ${statusFilter === status ? status === 'LIVE' ? 'bg-[#f59e0b] text-white border-[#f59e0b] shadow-[0_4px_10px_rgba(245,158,11,0.3)]' : status === 'PASSED' ? 'bg-[#10b981] text-white border-[#10b981] shadow-[0_4px_10px_rgba(16,185,129,0.3)]' : status === 'FAILED' ? 'bg-[#ef4444] text-white border-[#ef4444] shadow-[0_4px_10px_rgba(239,68,68,0.3)]' : 'bg-[#002561] text-white border-[#002561] shadow-[0_4px_10px_rgba(0,37,97,0.3)]' : 'bg-white border-[#e5e7eb] text-[#6b7280] hover:bg-gray-100'}`}>{status}</button>))}</div></div></div>
+            <div className="flex flex-col xl:flex-row gap-4 items-center justify-between bg-[#f9fafb] p-4 rounded-2xl border border-[#e5e7eb]"><div className="relative w-full xl:w-auto flex-1 max-w-md"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl">🔍</span><input type="text" placeholder="Search Name or Pers No..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 rounded-xl border border-[#d1d5db] focus:outline-none focus:border-[#009CB4] text-sm font-bold text-[#002561] placeholder-gray-400 shadow-inner" /></div><div className="flex flex-col md:flex-row items-center gap-4 w-full xl:w-auto"><div className="flex items-center gap-3 w-full md:w-auto bg-white border border-[#d1d5db] px-4 py-2 rounded-xl shadow-sm"><span className="text-lg">📅</span><input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="focus:outline-none text-sm font-bold text-[#002561] uppercase cursor-pointer" />{dateFilter && (<button onClick={() => setDateFilter('')} className="text-[10px] bg-red-100 text-red-600 font-bold px-2 py-1 rounded-md hover:bg-red-200 transition-all uppercase tracking-wider">Clear</button>)}</div>
+            <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
+  {['ALL', 'LIVE', 'PASSED', 'FAILED', 'RII'].map(status => (
+    <button 
+      key={status} 
+      onClick={() => setStatusFilter(status)} 
+      className={`px-5 py-2.5 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all whitespace-nowrap border-2 ${
+        statusFilter === status 
+          ? status === 'LIVE' ? 'bg-[#f59e0b] text-white border-[#f59e0b] shadow-[0_4px_10px_rgba(245,158,11,0.3)]' 
+          : status === 'PASSED' ? 'bg-[#10b981] text-white border-[#10b981] shadow-[0_4px_10px_rgba(16,185,129,0.3)]' 
+          : status === 'FAILED' ? 'bg-[#ef4444] text-white border-[#ef4444] shadow-[0_4px_10px_rgba(239,68,68,0.3)]' 
+          : status === 'RII' ? 'bg-purple-600 text-white border-purple-600 shadow-[0_4px_10px_rgba(147,51,234,0.3)]' 
+          : 'bg-[#002561] text-white border-[#002561] shadow-[0_4px_10px_rgba(0,37,97,0.3)]' 
+        : 'bg-white border-[#e5e7eb] text-[#6b7280] hover:bg-gray-100'
+      }`}
+    >
+      {status === 'RII' ? '🛡️ RII' : status}
+    </button>
+  ))}
+</div>
+            </div></div>
           </div>
           <div className="overflow-x-auto w-full">
             <table className="w-full text-left text-sm whitespace-nowrap"><thead className="bg-[#f9fafb]/50 text-[#002561] border-b border-[#e5e7eb] text-xs uppercase tracking-wider font-bold"><tr><th className="p-5 pl-8 w-32">Photo</th><th className="p-5 w-64 border-r border-[#e5e7eb]">Candidate Info</th><th className="p-5 pl-8">Exam Modules & Results</th></tr></thead><tbody className="divide-y divide-[#e5e7eb]">{groupedSessions.length === 0 ? (<tr><td colSpan={3} className="p-8 text-center text-[#9ca3af] font-medium tracking-wide">No participants match your search criteria.</td></tr>) : groupedSessions.map((group: any, index: number) => {
@@ -2322,7 +2396,18 @@ const sendBulkBatchesToAPI = async () => {
                       if (isPassed && session.score < 75) {
                       displayScore = (session.score % 2 === 0) ? 76 : 78;
                       }
-                       return (<div key={session.id} className="flex flex-wrap xl:flex-nowrap items-center justify-between p-5 pl-8 hover:bg-white transition-colors gap-4"><div className="w-full xl:w-1/3 flex flex-col gap-1"><span className="font-bold text-[#1f2937] text-sm">{session.type_of_ac || '-'}</span><span className="text-[10px] text-[#6b7280] font-bold uppercase tracking-wider">{session.kategori || '-'} • {session.subject} #{session.exam_no}</span></div>
+                       return (<div key={session.id} className="flex flex-wrap xl:flex-nowrap items-center justify-between p-5 pl-8 hover:bg-white transition-colors gap-4">
+                        <div className="w-full xl:w-1/3 flex flex-col gap-1">
+  <span className="font-bold text-[#1f2937] text-sm">{session.type_of_ac || '-'}</span>
+  <span className="text-[10px] text-[#6b7280] font-bold uppercase tracking-wider">{session.kategori || '-'} • {session.subject} #{session.exam_no}</span>
+  
+  {/* LABEL RII AUTHORIZATION */}
+  {session.has_rii && (
+    <span className="mt-1 w-fit px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded text-[9px] font-black tracking-widest uppercase flex items-center gap-1 shadow-sm">
+      🛡️ RII AUTH
+    </span>
+  )}
+</div>
 
       <div className="w-full xl:w-1/3 flex flex-col items-start gap-1.5">
       {session.status === 'COMPLETED' ? (
