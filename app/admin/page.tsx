@@ -496,8 +496,8 @@ export default function AdminDashboard() {
 
   // FUNGSI GHOST AUTO-SEND TABEL KE GMF
   const triggerAutoSendToGMF = async (sessionId: string) => {
-    const targetEmails = 'sydneyy2125@gmail.com';
-    if(!window.confirm(`Send a PDF copy of this document to:\n- sydneyy2125@gmail.com\n\n(The process runs for 3-5 seconds in the background.).`)) return;
+    const targetEmails = 'm.apriyansyah@gmf-aeroasia.co.id, arik.yanwar@garuda-indonesia.com';
+    if(!window.confirm(`Send a PDF copy of this document to:\n- m.apriyansyah@gmf-aeroasia.co.id\n- arik.yanwar@garuda-indonesia.com\n\n(The process runs for 3-5 seconds in the background.).`)) return;
     setAutoSendTarget(targetEmails);
     setPdfCaptured(false);
     await handleViewResult(sessionId);
@@ -787,7 +787,7 @@ const sendBulkBatchesToAPI = async () => {
   }, [autoSendTarget, viewingResultId, resLoading, resCandidate, pdfCaptured]);
 
   const handleSendEmailWithAttachment = async () => {
-    const targetEmail = window.prompt("Enter the destination email address (Manual Email Destination):", "list-tqd@gmf-aeroasia.co.id, m.apriyansyah@gmf-aeroasia.co.id, arik.yanwar@garuda-indonesia.com");
+    const targetEmail = window.prompt("Enter the destination email address (Manual Email Destination):", "m.apriyansyah@gmf-aeroasia.co.id, arik.yanwar@garuda-indonesia.com");
     if (!targetEmail) return;
 
     setIsSendingEmail(true);
