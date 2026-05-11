@@ -50,23 +50,29 @@ function DataRow({ label, value }: { label: string, value: string }) {
   )
 }
 
-// Dibungkus React.memo agar kebal dari efek Timer 1 Detik di komponen induk
+// Dibungkus React.memo agar kebal dari efek Timer di komponen induk
 const CandidateAvatar = React.memo(({ personnelNo, onClick }: { personnelNo: string, onClick: (photo: string) => void }) => {
   const [photo, setPhoto] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!personnelNo || personnelNo === 'N/A' || personnelNo === 'Unknown') return;
+    if (!personnelNo || personnelNo === 'N/A' || personnelNo === 'Unknown') {
+      setIsLoading(false);
+      return;
+    }
 
-    // 1. Cek apakah foto sudah ada di memori sementara browser
+    // 1. Cek apakah foto sudah ada di memori browser (Sangat Irit Egress)
     const cachedPhoto = sessionStorage.getItem(`photo_cache_${personnelNo}`);
     if (cachedPhoto && cachedPhoto !== 'none') {
       setPhoto(cachedPhoto);
+      setIsLoading(false);
       return;
     } else if (cachedPhoto === 'none') {
-      return; // Sudah pernah dicek dan memang tidak ada foto
+      setIsLoading(false);
+      return;
     }
 
-    // 2. Jika belum ada di memori, fetch HANYA foto untuk kandidat ini (Sekali Saja)
+    // 2. Jika belum ada, tarik dari Supabase
     const fetchPhoto = async () => {
       const { data } = await supabase
         .from('candidates')
@@ -80,12 +86,20 @@ const CandidateAvatar = React.memo(({ personnelNo, onClick }: { personnelNo: str
       } else {
         try { sessionStorage.setItem(`photo_cache_${personnelNo}`, 'none'); } catch(e) {}
       }
+      setIsLoading(false);
     };
     
-    fetchPhoto();
+    // TRIK SAKTI: Beri jeda waktu acak (0 - 3 detik) agar tidak memborbardir server
+    const randomDelay = Math.floor(Math.random() * 3000);
+    const timer = setTimeout(() => {
+      fetchPhoto();
+    }, randomDelay);
+
+    // Bersihkan timer jika komponen ditutup sebelum fetch selesai
+    return () => clearTimeout(timer);
   }, [personnelNo]);
 
-  // Jika foto ada, tampilkan dan beri efek bisa di-klik untuk Pop-Up
+  // Tampilan saat foto berhasil dimuat
   if (photo) {
     return (
       <img 
@@ -97,10 +111,12 @@ const CandidateAvatar = React.memo(({ personnelNo, onClick }: { personnelNo: str
     );
   }
 
-  // Jika tidak ada foto / masih loading, tampilkan ikon default
+  // Tampilan saat loading atau jika foto tidak ada
   return (
     <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#f3f4f6] to-[#e5e7eb] border-2 border-[#d1d5db] flex items-center justify-center text-[#9ca3af] shadow-inner">
-      <span className="text-2xl">👤</span>
+      <span className={`text-2xl ${isLoading ? 'animate-pulse' : ''}`}>
+        {isLoading ? '⏳' : '👤'}
+      </span>
     </div>
   );
 });
@@ -405,8 +421,6 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!isAuthenticated) return;
     fetchData()
-    const interval = setInterval(() => fetchData(), 300000)
-    return () => clearInterval(interval)
   }, [isAuthenticated])
 
 
