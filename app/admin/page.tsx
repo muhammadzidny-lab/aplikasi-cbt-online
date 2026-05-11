@@ -395,7 +395,7 @@ export default function AdminDashboard() {
 
   const { data: sessionData } = await supabase
   .from('exam_results')
-  .select(`id, type_of_ac, kategori, subject, exam_no, status, started_at, score, cheat_warnings, final_passed, email_sent, candidates (name, email, personnel_no, unit, rating_sought, exam_date, dgac_amel_no, dgac_rating, ga_auth_no, ga_rating)`)
+  .select(`id, has_rii, current_section, type_of_ac, kategori, subject, exam_no, status, started_at, score, cheat_warnings, final_passed, email_sent, candidates (name, email, personnel_no, unit, rating_sought, exam_date, dgac_amel_no, dgac_rating, ga_auth_no, ga_rating)`)
   .order('started_at', { ascending: false })
 
     if (sessionData) setSessions(sessionData)
