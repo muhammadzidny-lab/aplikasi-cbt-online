@@ -394,10 +394,9 @@ export default function AdminDashboard() {
     }
 
   const { data: sessionData } = await supabase
-      .from('exam_results')
-      // V-- TAMBAHKAN has_rii DI SINI --V
-      .select(`id, has_rii, current_section, type_of_ac, kategori, subject, exam_no, status, started_at, score, cheat_warnings, final_passed, email_sent, essay_answers, candidates (name, email, personnel_no, unit, rating_sought, exam_date, dgac_amel_no, dgac_rating, ga_auth_no, ga_rating)`)
-      .order('started_at', { ascending: false })
+  .from('exam_results')
+  .select(`id, type_of_ac, kategori, subject, exam_no, status, started_at, score, cheat_warnings, final_passed, email_sent, candidates (name, email, personnel_no, unit, rating_sought, exam_date, dgac_amel_no, dgac_rating, ga_auth_no, ga_rating)`)
+  .order('started_at', { ascending: false })
 
     if (sessionData) setSessions(sessionData)
     setLoading(false)
@@ -406,7 +405,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!isAuthenticated) return;
     fetchData()
-    const interval = setInterval(() => fetchData(), 10000)
+    const interval = setInterval(() => fetchData(), 120000)
     return () => clearInterval(interval)
   }, [isAuthenticated])
 
