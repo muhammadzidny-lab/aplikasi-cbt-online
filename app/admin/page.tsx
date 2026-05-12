@@ -305,7 +305,7 @@ export default function AdminDashboard() {
   const [pinInput, setPinInput] = useState('')
   const [loginError, setLoginError] = useState(false)
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
-  const SECRET_PIN = 'GARUDA2026'
+  const SECRET_PIN = 'EXAM_JKTMQS'
 
   // STATE MASTER GATE
   const [isMasterGateOpen, setIsMasterGateOpen] = useState(false)
