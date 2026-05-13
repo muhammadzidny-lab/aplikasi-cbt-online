@@ -90,7 +90,9 @@ export default function Home() {
       img.src = event.target?.result as string
       img.onload = () => {
         const canvas = document.createElement('canvas')
-        const MAX_WIDTH = 600 
+        
+        // PERBAIKAN 1: Turunkan ukuran maksimal jadi 200
+        const MAX_WIDTH = 200 
         
         let width = img.width
         let height = img.height
@@ -106,7 +108,9 @@ export default function Home() {
         const ctx = canvas.getContext('2d')
         ctx?.drawImage(img, 0, 0, width, height)
 
-        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7)
+        // PERBAIKAN 2: Turunkan kualitas kompresi jadi 0.5
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.5)
+        
         setFormData({ ...formData, photo: compressedBase64 })
         setIsCompressing(false)
       }

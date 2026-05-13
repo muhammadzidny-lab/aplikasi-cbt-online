@@ -50,74 +50,56 @@ function DataRow({ label, value }: { label: string, value: string }) {
   )
 }
 
-// Dibungkus React.memo agar kebal dari efek Timer di komponen induk
+// GANTI KOMPONEN INI DI FILE ADMIN DASHBOARD
 const CandidateAvatar = React.memo(({ personnelNo, onClick }: { personnelNo: string, onClick: (photo: string) => void }) => {
   const [photo, setPhoto] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    if (!personnelNo || personnelNo === 'N/A' || personnelNo === 'Unknown') {
-      setIsLoading(false);
-      return;
-    }
+  // FUNGSI LAZY FETCH: Data Base64 yang berat HANYA ditarik kalau foto DIKLIK
+  const handleAvatarClick = async () => {
+    if (!personnelNo || personnelNo === 'N/A' || personnelNo === 'Unknown') return;
 
-    // 1. Cek apakah foto sudah ada di memori browser (Sangat Irit Egress)
     const cachedPhoto = sessionStorage.getItem(`photo_cache_${personnelNo}`);
     if (cachedPhoto && cachedPhoto !== 'none') {
       setPhoto(cachedPhoto);
-      setIsLoading(false);
+      onClick(cachedPhoto); 
       return;
     } else if (cachedPhoto === 'none') {
-      setIsLoading(false);
+      alert("Candidate doesn't have a photo.");
       return;
     }
 
-    // 2. Jika belum ada, tarik dari Supabase
-    const fetchPhoto = async () => {
-      const { data } = await supabase
-        .from('candidates')
-        .select('photo')
-        .eq('personnel_no', personnelNo)
-        .single();
+    setIsLoading(true);
+    const { data } = await supabase
+      .from('candidates')
+      .select('photo')
+      .eq('personnel_no', personnelNo)
+      .single();
 
-      if (data && data.photo) {
-        setPhoto(data.photo);
-        try { sessionStorage.setItem(`photo_cache_${personnelNo}`, data.photo); } catch(e) {}
-      } else {
-        try { sessionStorage.setItem(`photo_cache_${personnelNo}`, 'none'); } catch(e) {}
-      }
-      setIsLoading(false);
-    };
-    
-    // TRIK SAKTI: Beri jeda waktu acak (0 - 3 detik) agar tidak memborbardir server
-    const randomDelay = Math.floor(Math.random() * 3000);
-    const timer = setTimeout(() => {
-      fetchPhoto();
-    }, randomDelay);
+    if (data && data.photo) {
+      setPhoto(data.photo);
+      try { sessionStorage.setItem(`photo_cache_${personnelNo}`, data.photo); } catch(e) {}
+      onClick(data.photo); 
+    } else {
+      try { sessionStorage.setItem(`photo_cache_${personnelNo}`, 'none'); } catch(e) {}
+      alert("Candidate doesn't have a photo.");
+    }
+    setIsLoading(false);
+  };
 
-    // Bersihkan timer jika komponen ditutup sebelum fetch selesai
-    return () => clearTimeout(timer);
-  }, [personnelNo]);
-
-  // Tampilan saat foto berhasil dimuat
   if (photo) {
     return (
-      <img 
-        src={photo} 
-        alt="Candidate" 
-        className="w-16 h-16 rounded-2xl object-cover border-2 border-[#d1d5db] shadow-sm cursor-pointer hover:scale-110 transition-transform" 
-        onClick={() => onClick(photo)} 
-      />
+      <img src={photo} alt="Candidate" className="w-16 h-16 rounded-2xl object-cover border-2 border-[#d1d5db] shadow-sm cursor-pointer hover:scale-110 transition-transform" onClick={() => onClick(photo)} />
     );
   }
 
-  // Tampilan saat loading atau jika foto tidak ada
+  // Tampilan Default SEBELUM diklik (Sangat ringan, 0 KB Egress)
   return (
-    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#f3f4f6] to-[#e5e7eb] border-2 border-[#d1d5db] flex items-center justify-center text-[#9ca3af] shadow-inner">
-      <span className={`text-2xl ${isLoading ? 'animate-pulse' : ''}`}>
-        {isLoading ? '⏳' : '👤'}
-      </span>
-    </div>
+    <button onClick={handleAvatarClick} disabled={isLoading} title="Click to load photo"
+      className={`w-16 h-16 rounded-2xl bg-gradient-to-br from-[#f3f4f6] to-[#e5e7eb] border-2 border-[#d1d5db] flex items-center justify-center text-[#9ca3af] shadow-inner transition-all hover:border-[#009CB4] hover:text-[#009CB4] ${isLoading ? 'animate-pulse' : 'cursor-pointer'}`}
+    >
+      <span className="text-2xl">{isLoading ? '⏳' : '👤'}</span>
+    </button>
   );
 });
 
